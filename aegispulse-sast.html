@@ -1,0 +1,2688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AegisPulse SAST — Catch Vulnerabilities Before They Ship</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{
+  --bg:#0a0e13;
+  --bg-raised:#11161d;
+  --panel:#141a22;
+  --panel-2:#1a212b;
+  --border:#232b35;
+  --border-soft:#1c232c;
+  --text:#e6edf3;
+  --text-dim:#8b98a5;
+  --text-faint:#5b6672;
+  --crit:#ff4757;
+  --crit-bg:rgba(255,71,87,.1);
+  --high:#ff8a3d;
+  --high-bg:rgba(255,138,61,.1);
+  --med:#ffd166;
+  --med-bg:rgba(255,209,102,.1);
+  --low:#4ecdc4;
+  --low-bg:rgba(78,205,196,.1);
+  --info:#6c7a89;
+  --info-bg:rgba(108,122,137,.1);
+  --accent:#5b8cff;
+  --accent-dim:rgba(91,140,255,.15);
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --radius:10px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+body::before{
+  content:"";
+  position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(91,140,255,.08), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 100% 0%, rgba(255,71,87,.05), transparent 60%);
+  pointer-events:none;
+  z-index:0;
+}
+#app{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 24px 80px;}
+
+/* ---------- Header ---------- */
+header.top{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:28px 0 20px;border-bottom:1px solid var(--border-soft);
+  margin-bottom:28px;
+}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-mark{
+  width:34px;height:34px;border-radius:8px;
+  background:linear-gradient(135deg,var(--accent),#8b5cf6);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-weight:700;color:#fff;font-size:15px;
+  box-shadow:0 4px 16px rgba(91,140,255,.3);
+}
+.brand-name{font-family:var(--mono);font-weight:600;font-size:17px;letter-spacing:.2px;}
+.brand-tag{font-size:11px;color:var(--text-faint);font-family:var(--mono);text-transform:uppercase;letter-spacing:1.2px;margin-top:2px;}
+.top-actions{display:flex;gap:10px;}
+
+button{font-family:var(--sans);cursor:pointer;border:none;}
+.btn{
+  padding:9px 16px;border-radius:8px;font-size:13.5px;font-weight:600;
+  display:inline-flex;align-items:center;gap:7px;transition:.15s ease;
+  border:1px solid var(--border);
+}
+.btn-primary{background:var(--accent);color:#08101f;border-color:var(--accent);}
+.btn-primary:hover{filter:brightness(1.08);}
+.btn-ghost{background:var(--panel);color:var(--text);}
+.btn-ghost:hover{background:var(--panel-2);border-color:#2c3644;}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn svg{width:15px;height:15px;flex-shrink:0;}
+
+/* ---------- Risk meter (signature element) ---------- */
+.risk-meter{margin-bottom:26px;}
+.risk-meter-label{
+  display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:11.5px;color:var(--text-faint);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;
+}
+.risk-bar{
+  height:10px;border-radius:999px;background:var(--panel);
+  border:1px solid var(--border-soft);overflow:hidden;display:flex;
+}
+.risk-bar span{height:100%;transition:width .5s ease;}
+
+/* ---------- Dropzone ---------- */
+.dropzone{
+  border:1.5px dashed #2b3542;border-radius:16px;
+  padding:64px 32px;text-align:center;background:var(--panel);
+  transition:.2s ease;position:relative;
+}
+.dropzone.drag{border-color:var(--accent);background:var(--accent-dim);}
+.dropzone h2{font-family:var(--mono);font-size:22px;margin:18px 0 8px;font-weight:600;}
+.dropzone p{color:var(--text-dim);font-size:14.5px;margin:0 0 22px;line-height:1.6;}
+.dropzone .icon-ring{
+  width:64px;height:64px;border-radius:50%;margin:0 auto;
+  background:var(--panel-2);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+}
+.dropzone .icon-ring svg{width:28px;height:28px;color:var(--accent);}
+.dz-buttons{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+.dz-formats{
+  margin-top:22px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;
+}
+.chip{
+  font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:6px;
+  background:var(--panel-2);color:var(--text-faint);border:1px solid var(--border-soft);
+}
+input[type=file]{display:none;}
+
+/* ---------- Queue / progress ---------- */
+.queue-panel{background:var(--panel);border:1px solid var(--border-soft);border-radius:14px;padding:20px 22px;margin-bottom:20px;}
+.queue-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+.queue-head h3{margin:0;font-size:14px;font-family:var(--mono);color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
+.queue-list{display:flex;flex-direction:column;gap:8px;max-height:180px;overflow:auto;}
+.queue-item{display:flex;align-items:center;gap:10px;font-size:13px;font-family:var(--mono);color:var(--text-dim);}
+.queue-item .dot{width:6px;height:6px;border-radius:50%;background:var(--text-faint);flex-shrink:0;}
+.progress-track{height:6px;background:var(--panel-2);border-radius:99px;overflow:hidden;margin-top:14px;}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),#8b5cf6);width:0%;transition:width .2s ease;}
+.progress-status{font-family:var(--mono);font-size:12px;color:var(--text-faint);margin-top:8px;}
+
+/* ---------- Dashboard ---------- */
+.dash-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:24px;}
+.stat-card{
+  background:var(--panel);border:1px solid var(--border-soft);border-radius:12px;
+  padding:16px 14px;text-align:left;
+}
+.stat-card .num{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1;}
+.stat-card .lbl{font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.8px;margin-top:6px;font-family:var(--mono);}
+.stat-card.crit .num{color:var(--crit);}
+.stat-card.high .num{color:var(--high);}
+.stat-card.med .num{color:var(--med);}
+.stat-card.low .num{color:var(--low);}
+.stat-card.info .num{color:var(--info);}
+.stat-card.total .num{color:var(--accent);}
+.stat-card.coverage .num{color:#a78bfa;font-size:22px;}
+
+.toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap;}
+.filters{display:flex;gap:8px;flex-wrap:wrap;}
+.filter-btn{
+  font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:99px;
+  background:var(--panel);border:1px solid var(--border);color:var(--text-dim);
+}
+.filter-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
+.search-box{
+  background:var(--panel);border:1px solid var(--border);border-radius:8px;
+  padding:8px 12px;color:var(--text);font-family:var(--mono);font-size:13px;min-width:220px;
+}
+.search-box:focus{outline:none;border-color:var(--accent);}
+
+.section-title{font-family:var(--mono);font-size:13px;color:var(--text-faint);text-transform:uppercase;letter-spacing:1px;margin:26px 0 12px;display:flex;align-items:center;gap:10px;}
+.section-title::after{content:"";flex:1;height:1px;background:var(--border-soft);}
+
+.file-group{background:var(--panel);border:1px solid var(--border-soft);border-radius:12px;margin-bottom:12px;overflow:hidden;}
+.file-group-head{
+  padding:13px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;
+  background:var(--panel-2);
+}
+.file-group-head .fname{font-family:var(--mono);font-size:13px;color:var(--text);word-break:break-all;}
+.file-group-head .fcount{font-family:var(--mono);font-size:11.5px;color:var(--text-faint);flex-shrink:0;margin-left:10px;}
+.file-group-body{display:none;}
+.file-group-body.open{display:block;}
+
+.finding{
+  padding:16px 18px;border-top:1px solid var(--border-soft);
+}
+.finding-head{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;}
+.finding-title{font-size:14px;font-weight:600;color:var(--text);}
+.sev-chip{
+  font-family:var(--mono);font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:5px;
+  text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;
+}
+.sev-critical{background:var(--crit-bg);color:var(--crit);}
+.sev-high{background:var(--high-bg);color:var(--high);}
+.sev-medium{background:var(--med-bg);color:var(--med);}
+.sev-low{background:var(--low-bg);color:var(--low);}
+.sev-info{background:var(--info-bg);color:var(--info);}
+
+.finding-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+.tag{font-family:var(--mono);font-size:10.5px;color:var(--text-faint);background:var(--panel-2);border:1px solid var(--border-soft);padding:2px 8px;border-radius:5px;}
+.finding-desc{font-size:13.5px;color:var(--text-dim);line-height:1.6;margin-top:10px;}
+.finding-rec{font-size:13px;color:var(--text-dim);line-height:1.6;margin-top:8px;padding:10px 12px;background:var(--panel-2);border-left:2px solid var(--accent);border-radius:0 6px 6px 0;}
+.finding-rec b{color:var(--accent);}
+.snippet{
+  font-family:var(--mono);font-size:12.5px;background:#080b0f;border:1px solid var(--border-soft);
+  border-radius:8px;padding:10px 12px;margin-top:10px;overflow-x:auto;color:#c9d6e3;white-space:pre;
+}
+.snippet .ln{color:var(--text-faint);margin-right:12px;user-select:none;}
+
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-faint);}
+.empty-state svg{width:40px;height:40px;margin-bottom:14px;opacity:.5;}
+
+footer.foot{margin-top:50px;padding-top:20px;border-top:1px solid var(--border-soft);color:var(--text-faint);font-size:12px;font-family:var(--mono);text-align:center;}
+
+@media (max-width:800px){
+  .dash-grid{grid-template-columns:repeat(2,1fr);}
+}
+
+.toast{
+  position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+  font-family:var(--mono);font-size:13px;padding:12px 20px;border-radius:10px;
+  box-shadow:0 8px 30px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:.25s ease;
+  z-index:50;display:flex;align-items:center;gap:10px;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast .dot{width:8px;height:8px;border-radius:50%;background:var(--low);flex-shrink:0;}
+
+/* ---------- Top-level tabs ---------- */
+.main-tabs{display:flex;gap:6px;margin-bottom:26px;border-bottom:1px solid var(--border-soft);}
+.main-tab-btn{
+  font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text-faint);
+  background:transparent;border:none;padding:12px 18px;border-bottom:2px solid transparent;
+  margin-bottom:-1px;letter-spacing:.3px;transition:.15s ease;
+}
+.main-tab-btn:hover{color:var(--text-dim);}
+.main-tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+
+/* ---------- Network analyzer ---------- */
+.net-input-row{display:flex;gap:10px;margin-bottom:22px;}
+.net-input-row input[type=text]{
+  flex:1;background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:13px 16px;color:var(--text);font-family:var(--mono);font-size:14px;
+}
+.net-input-row input[type=text]:focus{outline:none;border-color:var(--accent);}
+.net-examples{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;}
+.net-examples .chip{cursor:pointer;}
+.net-examples .chip:hover{border-color:var(--accent);color:var(--accent);}
+
+.net-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px;}
+.net-card{background:var(--panel);border:1px solid var(--border-soft);border-radius:12px;padding:18px;}
+.net-card h4{margin:0 0 12px;font-family:var(--mono);font-size:12px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;gap:8px;}
+.net-card .kv{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border-soft);}
+.net-card .kv:last-child{border-bottom:none;}
+.net-card .kv .k{color:var(--text-dim);}
+.net-card .kv .v{font-family:var(--mono);color:var(--text);text-align:right;}
+.net-status-pill{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:5px;text-transform:uppercase;letter-spacing:.5px;}
+.net-status-pill.ok{background:var(--low-bg);color:var(--low);}
+.net-status-pill.warn{background:var(--med-bg);color:var(--med);}
+.net-status-pill.bad{background:var(--crit-bg);color:var(--crit);}
+
+.port-matrix{display:flex;flex-wrap:wrap;gap:8px;}
+.port-chip{
+  font-family:var(--mono);font-size:12px;padding:8px 12px;border-radius:8px;
+  border:1px solid var(--border);background:var(--panel-2);display:flex;flex-direction:column;gap:2px;min-width:76px;
+}
+.port-chip .pnum{font-weight:700;font-size:14px;}
+.port-chip .plabel{font-size:10px;color:var(--text-faint);}
+.port-chip.open{border-color:var(--high);}
+.port-chip.open .pnum{color:var(--high);}
+.port-chip.closed{opacity:.55;}
+
+.net-loading{display:flex;align-items:center;gap:10px;color:var(--text-dim);font-family:var(--mono);font-size:13px;padding:30px 0;}
+.spinner{width:16px;height:16px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);animation:spin .7s linear infinite;flex-shrink:0;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+.net-disclaimer{
+  font-size:12px;color:var(--text-faint);background:var(--panel);border:1px solid var(--border-soft);
+  border-radius:10px;padding:12px 16px;margin-top:6px;line-height:1.6;
+}
+
+@media (max-width:800px){
+  .net-grid{grid-template-columns:1fr;}
+}
+
+
+/* ---------- CSP paste + parser ---------- */
+.csp-input-block{background:var(--panel);border:1px solid var(--border-soft);border-radius:12px;padding:20px;margin-bottom:22px;}
+.ssl-source-row{display:flex;gap:10px;margin-bottom:10px;}
+.ssl-source-row input[type=text]{
+  flex:1;background:var(--bg-raised);border:1px solid var(--border);border-radius:8px;
+  color:var(--text);font-family:var(--mono);font-size:13.5px;padding:10px 12px;
+}
+.ssl-source-row input[type=text]:focus{outline:none;border-color:var(--accent);}
+.ssl-source-row .btn{white-space:nowrap;}
+.csp-input-block label{display:block;font-family:var(--mono);font-size:12px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;}
+.csp-input-block textarea{
+  width:100%;min-height:110px;background:#080b0f;border:1px solid var(--border-soft);border-radius:8px;
+  color:#c9d6e3;font-family:var(--mono);font-size:12.5px;padding:12px;resize:vertical;
+}
+.csp-input-block textarea:focus{outline:none;border-color:var(--accent);}
+.csp-hint{font-size:12px;color:var(--text-faint);margin-top:8px;line-height:1.6;}
+.csp-directive-row{
+  display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--border-soft);
+}
+.csp-directive-row:first-child{border-top:none;}
+.csp-directive-name{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--accent);min-width:130px;flex-shrink:0;}
+.csp-directive-values{font-family:var(--mono);font-size:12.5px;color:var(--text-dim);word-break:break-word;flex:1;}
+.csp-flag-list{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
+.csp-flag{font-size:12px;padding:4px 0;display:flex;gap:6px;align-items:flex-start;}
+.csp-flag.crit{color:var(--crit);}
+.csp-flag.high{color:var(--high);}
+.csp-flag.med{color:var(--med);}
+.csp-input-block code{background:#080b0f;padding:1px 6px;border-radius:4px;font-family:var(--mono);color:var(--low);}
+
+
+/* ---------- OWASP mapping and print output ---------- */
+.mapping-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:22px;}
+.mapping-card{background:var(--panel);border:1px solid var(--border-soft);border-radius:12px;padding:18px;}
+.mapping-card h3{margin:0 0 14px;font-family:var(--mono);font-size:13px;color:var(--text-dim);}
+.mapping-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border-soft);}
+.mapping-row:first-of-type{border-top:none;}
+.mapping-name{font-family:var(--mono);font-size:12px;color:var(--text);min-width:210px;}
+.mapping-track{height:7px;flex:1;background:var(--panel-2);border-radius:99px;overflow:hidden;}
+.mapping-fill{height:100%;background:linear-gradient(90deg,var(--accent),#8b5cf6);border-radius:99px;}
+.mapping-count{font-family:var(--mono);font-size:12px;color:var(--text-dim);min-width:24px;text-align:right;}
+.mapping-note{font-size:12.5px;color:var(--text-dim);line-height:1.6;background:var(--panel);border:1px solid var(--border-soft);border-radius:10px;padding:14px 16px;margin-bottom:22px;}
+.audit-results{margin-top:14px;}
+@media print{
+  :root{--bg:#fff;--bg-raised:#f7f8fa;--panel:#fff;--panel-2:#f3f5f7;--border:#d7dce2;--border-soft:#e6e9ed;--text:#17202a;--text-dim:#46515d;--text-faint:#6b7682;--accent:#2457c6;}
+  body{background:#fff;color:#17202a;}
+  body::before,.top-actions,.main-tabs,.dropzone,#queuePanel,.toolbar,.net-examples,.btn,#toast,.net-disclaimer{display:none!important;}
+  #app{max-width:none;padding:0;margin:0;}
+  .tab-panel{display:block!important;}
+  .tab-panel#tabPanelNetwork,.tab-panel#tabPanelOwasp{break-before:page;}
+  .finding,.file-group,.net-card,.mapping-card,.csp-input-block{break-inside:avoid;background:#fff;border-color:#d7dce2;}
+  .snippet{background:#f7f8fa;color:#17202a;border-color:#d7dce2;}
+  .stat-card{background:#fff;border-color:#d7dce2;}
+  footer.foot{color:#6b7682;}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="top">
+    <div class="brand">
+      <div class="brand-mark">S</div>
+      <div>
+        <div class="brand-name">AegisPulse SAST</div>
+        <div class="brand-tag">Catch Vulnerabilities Before They Ship</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="btn btn-ghost" id="btnNewScan" style="display:none;">↺ New scan</button>
+      <button class="btn btn-ghost" id="btnExportJson" style="display:none;">⇩ Export JSON</button>
+      <button class="btn btn-ghost" id="btnPrintReport" style="display:none;">▣ Print report</button>
+      <button class="btn btn-primary" id="btnExportPdf" style="display:none;">⬇ Export PDF report</button>
+    </div>
+  </header>
+
+  <div class="main-tabs" id="mainTabs">
+    <button class="main-tab-btn active" data-tab="scanner">Source Code &amp; Mobile Package Scanner</button>
+    <button class="main-tab-btn" data-tab="network">Online Website &amp; Network Analyzer</button>
+    <button class="main-tab-btn" data-tab="owasp">OWASP Mapping</button>
+  </div>
+
+  <div class="tab-panel active" id="tabPanelScanner">
+
+    <div id="riskMeterWrap" style="display:none;" class="risk-meter">
+      <div class="risk-meter-label"><span id="riskLabel">Risk posture</span><span id="riskCount">0 findings</span></div>
+      <div class="risk-bar" id="riskBar"></div>
+    </div>
+
+    <div id="dropzoneWrap">
+      <div class="dropzone" id="dropzone">
+        <div class="icon-ring">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+        </div>
+        <h2>Drop your project to scan</h2>
+        <p>APK, IPA, ZIP archives, whole project folders, or individual source files.<br>Everything runs locally in this browser tab — nothing is uploaded anywhere.</p>
+        <div class="dz-buttons">
+          <button class="btn btn-primary" id="btnPickFiles">Choose files</button>
+        </div>
+        <input type="file" id="fileInputMulti" multiple>
+        <div class="dz-formats">
+          <span class="chip">.apk</span><span class="chip">.ipa</span><span class="chip">.zip</span>
+          <span class="chip">.java .kt</span><span class="chip">.swift .m</span><span class="chip">.js .ts</span>
+          <span class="chip">.py</span><span class="chip">.php</span><span class="chip">.go</span>
+           <span class="chip">.rb .pl .pm</span><span class="chip">.rs</span><span class="chip">.cs</span><span class="chip">.c .cpp</span>
+          <span class="chip">+ any text source</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="queuePanel" class="queue-panel" style="display:none;">
+      <div class="queue-head"><h3>Scanning…</h3><span class="progress-status" id="progressPct">0%</span></div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-status" id="progressStatus">Preparing…</div>
+    </div>
+
+    <div id="results" style="display:none;"></div>
+  </div>
+
+  <div class="tab-panel" id="tabPanelNetwork">
+
+    <div class="section-title">Live DNS, header &amp; CSP check</div>
+    <div class="net-input-row">
+      <input type="text" id="netUrlInput" placeholder="https://example.com" autocomplete="off">
+      <button class="btn btn-primary" id="btnNetScan">Resolve</button>
+    </div>
+    <div class="net-examples">
+      <span class="chip" data-example="https://github.com">github.com</span>
+      <span class="chip" data-example="https://cloudflare.com">cloudflare.com</span>
+      <span class="chip" data-example="https://wikipedia.org">wikipedia.org</span>
+    </div>
+    <div id="netResults"></div>
+
+    <div class="section-title">SSL certificate &amp; TLS configuration</div>
+    <div class="csp-input-block">
+      <label>Get the data, then paste it below</label>
+      <div class="ssl-source-row">
+        <input type="text" id="sslDomainInput" placeholder="example.com" autocomplete="off">
+        <button class="btn btn-ghost" id="btnOpenSslLabs" type="button">↗ Open SSL Labs test</button>
+      </div>
+      <div class="csp-hint" style="margin-top:2px;margin-bottom:12px;">
+        No browser API exposes certificate or TLS handshake details to JavaScript — that's a hard sandbox limit, not a CORS quirk, so it can't be fetched automatically. "Open SSL Labs test" runs a real handshake-level scan of the domain above and opens the JSON API result in a new tab (direct navigation isn't blocked like a JS fetch would be); copy that whole page and paste it below. Output from <code>openssl s_client -connect host:443 -showcerts</code>, or the Subject/Issuer/Valid-from/Valid-to/SANs/Protocol/Cipher fields from your browser's own certificate viewer (padlock icon → Connection is secure → Certificate), also parse fine.
+      </div>
+      <textarea id="sslPasteInput" placeholder='Paste SSL Labs JSON, openssl output, or plain "Issuer: ...", "Valid To: ...", "Protocol: ..." lines here'></textarea>
+      <div style="margin-top:14px;"><button class="btn btn-primary" id="btnParseSsl">Parse &amp; audit</button></div>
+    </div>
+    <div id="sslResults"></div>
+
+    <div class="section-title">Manual HTTP response audit</div>
+    <div class="csp-input-block">
+      <label>Paste response headers and an optional CORS request origin</label>
+      <div class="ssl-source-row">
+        <input type="text" id="corsOriginInput" placeholder="https://your-frontend.example" autocomplete="off">
+        <button class="btn btn-primary" id="btnAuditHeaders" type="button">Audit headers</button>
+      </div>
+      <textarea id="headerPasteInput" placeholder="Paste raw HTTP response headers, for example:
+HTTP/2 200
+strict-transport-security: max-age=31536000; includeSubDomains
+content-security-policy: default-src 'self'; object-src 'none'
+x-frame-options: DENY
+access-control-allow-origin: https://your-frontend.example
+access-control-allow-credentials: true"></textarea>
+      <div class="csp-hint">This audit is based only on the text you paste. It checks CORS origin/credential combinations, HSTS, CSP, clickjacking, MIME sniffing, referrer policy, permissions policy, and cache-control signals.</div>
+    </div>
+    <div id="headerResults" class="audit-results"></div>
+
+    <div class="net-disclaimer">
+      DNS data above (A/AAAA/NS/MX/TXT/CAA) is retrieved live via public DNS-over-HTTPS resolvers (Cloudflare/Google), reached directly from your browser. The CSP/header check attempts a live fetch of the URL first; browsers only expose security headers to JavaScript when the target site opts in via CORS, which most sites don't — when that happens, the reported header baseline falls back to a labeled heuristic estimate for the detected hosting profile rather than an observed fact. Certificate/TLS findings are based only on what you pasted, since no browser API exposes TLS handshake data to JavaScript at all. Real port scanning (nmap) requires opening raw sockets, which no browser can do — that isn't offered here since it can't be done honestly without a local helper process.
+    </div>
+
+    <div style="margin-top:24px;">
+      <button class="btn btn-primary" id="btnExportNetPdf">⬇ Download network analyzer report (PDF)</button>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabPanelOwasp">
+    <div class="section-title">OWASP coverage and finding distribution</div>
+    <div id="owaspResults">
+      <div class="empty-state">Run a source or mobile package scan to populate the OWASP mapping.</div>
+    </div>
+  </div>
+
+  <footer class="foot">AegisPulse SAST runs entirely client-side. Results are regex/heuristic-based and now apply comment filtering, confidence labels, and bounded binary inspection; they still cannot replace AST/taint analysis, manual penetration testing, or a full SAST/dynamic review. Large compiled binaries may be partially inspected to protect browser memory. Web findings are mapped to OWASP Top 10:2025 (published Nov 2025, finalized Jan 2026); mobile findings are mapped to OWASP MASVS v2.1. These mappings are hardcoded in this file and do not update automatically — recheck against owasp.org if a newer edition has since been published.</footer>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+/* ======================================================================
+   AEGISPULSE SAST — client-side mobile + web source security scanner
+   All parsing/scanning happens in-browser. No network calls with file data.
+   ====================================================================== */
+(function(){
+"use strict";
+
+const SEV = { CRITICAL:'critical', HIGH:'high', MEDIUM:'medium', LOW:'low', INFO:'info' };
+const SEV_ORDER = [SEV.CRITICAL, SEV.HIGH, SEV.MEDIUM, SEV.LOW, SEV.INFO];
+const SEV_COLOR = { critical:'#ff4757', high:'#ff8a3d', medium:'#ffd166', low:'#4ecdc4', info:'#6c7a89' };
+const SEV_LABEL = { critical:'Critical', high:'High', medium:'Medium', low:'Low', info:'Info' };
+
+/* ---------------------------------------------------------------------
+   Language detection by extension
+   --------------------------------------------------------------------- */
+const EXT_LANG = {
+  js:'javascript', jsx:'javascript', mjs:'javascript', cjs:'javascript',
+  ts:'javascript', tsx:'javascript',
+  py:'python', pyw:'python',
+  php:'php', php3:'php', php4:'php', php5:'php', phtml:'php',
+  java:'java', kt:'java', kts:'java',
+  swift:'swift', m:'objc', mm:'objc', h:'objc',
+  go:'go',
+  rb:'ruby', erb:'ruby',
+  pl:'perl', pm:'perl', t:'perl',
+  rs:'rust',
+  cs:'csharp',
+  c:'cpp', cpp:'cpp', cc:'cpp', cxx:'cpp', hpp:'cpp',
+  xml:'xml', plist:'plist',
+  json:'generic', yml:'generic', yaml:'generic', env:'generic', config:'generic', properties:'generic'
+};
+function extOf(path){
+  const clean = path.split(/[?#]/)[0];
+  const m = clean.match(/\.([a-zA-Z0-9]+)$/);
+  return m ? m[1].toLowerCase() : '';
+}
+function langOf(path){
+  return EXT_LANG[extOf(path)] || null;
+}
+function baseName(path){
+  return path.split('/').pop();
+}
+
+/* ---------------------------------------------------------------------
+   Printable-string extraction from raw bytes (like `strings` on binaries)
+   Used on compiled artifacts: classes.dex, *.so, *.dylib, Mach-O binaries
+   --------------------------------------------------------------------- */
+const MAX_BINARY_BYTES_TO_SCAN = 64 * 1024 * 1024;
+const MAX_BINARY_STRINGS = 25000;
+const MAX_BINARY_STRING_CHARS = 1500000;
+const MAX_BINARY_STRING_LENGTH = 4096;
+
+/*
+ * Keep binary inspection bounded. A large native library can contain millions
+ * of printable fragments; retaining all of them at once is an avoidable tab
+ * crash risk. The returned array carries metadata so callers can disclose
+ * partial coverage instead of presenting it as complete.
+ */
+function extractPrintableStrings(bytes, minLen){
+  minLen = minLen || 6;
+  const out = [];
+  const scanLimit = Math.min(bytes.length, MAX_BINARY_BYTES_TO_SCAN);
+  let cur = [];
+  let totalChars = 0;
+  let truncated = bytes.length > scanLimit;
+
+  function flush(){
+    if (cur.length < minLen) { cur = []; return; }
+    if (out.length >= MAX_BINARY_STRINGS || totalChars >= MAX_BINARY_STRING_CHARS){
+      truncated = true;
+      cur = [];
+      return;
+    }
+    const room = MAX_BINARY_STRING_CHARS - totalChars;
+    const value = String.fromCharCode.apply(null, cur).slice(0, room);
+    if (value.length >= minLen){
+      out.push(value);
+      totalChars += value.length;
+    }
+    if (value.length < cur.length) truncated = true;
+    cur = [];
+  }
+
+  for (let i=0;i<scanLimit;i++){
+    const b = bytes[i];
+    if (b >= 32 && b <= 126){
+      cur.push(b);
+      if (cur.length >= MAX_BINARY_STRING_LENGTH) flush();
+    } else {
+      flush();
+    }
+    if (out.length >= MAX_BINARY_STRINGS || totalChars >= MAX_BINARY_STRING_CHARS){
+      truncated = true;
+      break;
+    }
+  }
+  flush();
+  out.truncated = truncated;
+  out.scannedBytes = scanLimit;
+  out.totalBytes = bytes.length;
+  return out;
+}
+
+/* ---------------------------------------------------------------------
+   Rule engine — regex/heuristic static analysis rules
+   Each rule: { id, lang: 'javascript'|'python'|...|'generic'|'*',
+                pattern: RegExp, severity, title, description, recommendation,
+                owasp, masvs }
+   'generic' rules run on every text file regardless of detected language.
+   --------------------------------------------------------------------- */
+const RULES = [];
+
+function addRules(lang, list){
+  const extMap = {
+    generic:['*'], javascript:['js','jsx','mjs','cjs','ts','tsx'],
+    python:['py','pyw'], ruby:['rb','erb'], perl:['pl','pm','t'],
+    php:['php','php3','php4','php5','phtml'], java:['java','kt','kts'],
+    swift:['swift'], objc:['m','mm','h'], go:['go'], rust:['rs'],
+    csharp:['cs'], cpp:['c','cpp','cc','cxx','hpp','h']
+  };
+  list.forEach(r => RULES.push(Object.assign({
+    lang, exts: r.exts || extMap[lang] || ['*'],
+    desc: r.desc || r.description || '',
+    remediation: r.remediation || r.recommendation || ''
+  }, r)));
+}
+
+/* ---- Generic secret / credential scanning (all files) ---- */
+addRules('generic', [
+  { id:'GEN-001', pattern:/(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}/, severity:SEV.CRITICAL,
+    title:'Hardcoded AWS access key', description:'An AWS access key ID literal was found in source.',
+    recommendation:'Remove the credential from source control, rotate the key immediately, and load secrets from a vault or environment variable at runtime.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-STORAGE-1' },
+  { id:'GEN-002', pattern:/-----BEGIN (RSA|EC|DSA|OPENSSH|PGP) PRIVATE KEY-----/, severity:SEV.CRITICAL,
+    title:'Embedded private key', description:'A private key block is embedded directly in the project.',
+    recommendation:'Remove the key from the repository/binary, rotate it, and manage keys through a secrets manager or the platform keystore/keychain.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+  { id:'GEN-003', pattern:/eyJhbGciOi|eyJhYmdjZXJ0I|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/, severity:SEV.CRITICAL,
+    title:'Hardcoded JWT token', description:'A JSON Web Token literal was found, which may leak session or identity data if committed.',
+    recommendation:'Never hardcode live tokens in source. Treat any exposed token as compromised and revoke it.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-STORAGE-1' },
+  { id:'GEN-004', pattern:/xox[baprs]-[0-9A-Za-z-]{10,}/, severity:SEV.CRITICAL,
+    title:'Hardcoded Slack token', description:'A Slack API token literal was found in source.',
+    recommendation:'Revoke the token in Slack admin, remove from source, and load via environment/secret manager.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-STORAGE-1' },
+  { id:'GEN-005', pattern:/(api[_-]?key|apikey|secret|password|auth_token|client[_-]?secret|access[_-]?token)\s*[:=]\s*['"][A-Za-z0-9_\-.~+\/=]{8,}['"]/i, severity:SEV.CRITICAL,
+    title:'Hardcoded API key / secret', description:'A variable assignment looks like a hardcoded API key or secret literal.',
+    recommendation:'Move the value out of source into environment variables, a build-time secret injection step, or platform keystore/keychain.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-STORAGE-1' },
+  { id:'GEN-006', pattern:/password\s*[:=]\s*['"][^'"\s]{3,}['"]/i, severity:SEV.HIGH,
+    title:'Hardcoded password', description:'A password literal is assigned directly in code.',
+    recommendation:'Remove hardcoded credentials; use a secrets manager, keystore, or prompt/inject at runtime.',
+    owasp:'A07:2025 Authentication Failures', masvs:'MASVS-STORAGE-1' },
+  { id:'GEN-007', pattern:/(mongodb|postgres|postgresql|mysql|redis):\/\/[^:\s]+:[^@\s]+@/i, severity:SEV.HIGH,
+    title:'Hardcoded database connection string with credentials', description:'A database connection URI includes an embedded username/password.',
+    recommendation:'Externalize connection strings via environment variables/secret store; avoid embedding credentials in code or config committed to VCS.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-STORAGE-1' },
+  { id:'GEN-008', pattern:/\b(?:TODO|FIXME|XXX)\b.{0,40}(secur|vuln|hack|password|auth)/i, severity:SEV.INFO,
+    title:'Developer note referencing a security concern', description:'A TODO/FIXME comment references a security-relevant concern that may be unresolved.',
+    recommendation:'Triage the comment and confirm whether the underlying issue has been fixed.',
+    owasp:'A00 Informational', masvs:'MASVS-CODE-1' },
+]);
+
+/* ---- JavaScript / TypeScript ---- */
+addRules('javascript', [
+  { id:'JS-001', pattern:/\beval\s*\(/, severity:SEV.HIGH, title:'Use of eval()',
+    description:'eval() executes arbitrary strings as code, enabling code injection if any input reaches it.',
+    recommendation:'Avoid eval(); use JSON.parse for data, or safer alternatives (Function constructors are similarly dangerous and should also be avoided).',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'JS-002', pattern:/\.innerHTML\s*=|dangerouslySetInnerHTML/, severity:SEV.HIGH, title:'Direct HTML injection sink',
+    description:'Assigning to innerHTML or dangerouslySetInnerHTML with unsanitized input can lead to stored/DOM XSS.',
+    recommendation:'Sanitize with a vetted library (e.g. DOMPurify) before rendering, or use textContent / framework-safe binding instead.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-PLATFORM-2' },
+  { id:'JS-003', pattern:/document\.write\s*\(/, severity:SEV.MEDIUM, title:'Use of document.write()',
+    description:'document.write can be exploited for XSS and also breaks streaming rendering.',
+    recommendation:'Use DOM APIs (createElement/textContent) instead of document.write.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-PLATFORM-2' },
+  { id:'JS-004', pattern:/(exec|execSync|spawn)\s*\(\s*(`|["'].*\$\{|.*\+)/, severity:SEV.HIGH, title:'Possible command injection',
+    description:'child_process exec/spawn is called with a dynamically built command string.',
+    recommendation:'Use execFile/spawn with an argument array (never a shell string), and validate/allowlist any user-controlled input.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'JS-005', pattern:/createHash\(['"](md5|sha1)['"]\)/i, severity:SEV.MEDIUM, title:'Weak hash algorithm',
+    description:'MD5/SHA-1 are cryptographically broken for integrity/security-sensitive use.',
+    recommendation:'Use SHA-256 or better for integrity checks, and a dedicated password hash (bcrypt/scrypt/argon2) for passwords.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+  { id:'JS-006', pattern:/rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['"]?0/, severity:SEV.CRITICAL, title:'TLS certificate validation disabled',
+    description:'Disabling certificate validation exposes the app to man-in-the-middle attacks.',
+    recommendation:'Never disable certificate verification in production code; fix the underlying certificate/trust issue instead.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-NETWORK-1' },
+  { id:'JS-007', pattern:/localStorage\.setItem\(\s*['"][^'"]*(token|password|secret|auth)[^'"]*['"]/i, severity:SEV.MEDIUM, title:'Sensitive data stored in localStorage',
+    description:'localStorage is not encrypted and is accessible to any script/XSS in the origin, making it unsuitable for tokens or secrets.',
+    recommendation:'Prefer httpOnly, secure cookies for session tokens, or in-memory storage for short-lived tokens.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-STORAGE-1' },
+  { id:'JS-008', pattern:/Math\.random\(\)/, severity:SEV.LOW, title:'Use of Math.random()',
+    description:'Math.random() is not cryptographically secure. Flagged for review in case it is used for tokens, IDs, or security decisions.',
+    recommendation:'If used for anything security-sensitive, replace with crypto.getRandomValues() (browser) or crypto.randomBytes (Node).',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+]);
+
+/* ---- Python ---- */
+addRules('python', [
+  { id:'PY-001', pattern:/\b(eval|exec)\s*\(/, severity:SEV.HIGH, title:'Use of eval()/exec()',
+    description:'eval/exec run arbitrary code from a string, a classic code-injection vector.',
+    recommendation:'Avoid eval/exec on any input that is not fully trusted and constant; use ast.literal_eval for data parsing.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'PY-002', pattern:/pickle\.(loads|load)\s*\(/, severity:SEV.CRITICAL, title:'Insecure deserialization (pickle)',
+    description:'pickle.load/loads can execute arbitrary code when deserializing untrusted data.',
+    recommendation:'Never unpickle data from an untrusted source; use JSON or a safe schema-validated format instead.',
+    owasp:'A08:2025 Software or Data Integrity Failures', masvs:'MASVS-CODE-1' },
+  { id:'PY-003', pattern:/yaml\.load\s*\((?!.*Loader\s*=\s*yaml\.SafeLoader)/, severity:SEV.HIGH, title:'Unsafe YAML deserialization',
+    description:'yaml.load without SafeLoader can instantiate arbitrary Python objects from YAML content.',
+    recommendation:'Use yaml.safe_load() or explicitly pass Loader=yaml.SafeLoader.',
+    owasp:'A08:2025 Software or Data Integrity Failures', masvs:'MASVS-CODE-1' },
+  { id:'PY-004', pattern:/subprocess\.\w+\([^)]*shell\s*=\s*True/, severity:SEV.HIGH, title:'Shell command execution with shell=True',
+    description:'subprocess calls with shell=True and any dynamic input are vulnerable to command injection.',
+    recommendation:'Pass the command as a list without shell=True, and validate/allowlist any user-controlled arguments.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'PY-005', pattern:/os\.system\s*\(/, severity:SEV.HIGH, title:'os.system() call',
+    description:'os.system passes a string to the shell; unsanitized input leads directly to command injection.',
+    recommendation:'Use subprocess.run with an argument list instead of os.system.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'PY-006', pattern:/hashlib\.(md5|sha1)\s*\(/, severity:SEV.MEDIUM, title:'Weak hash algorithm',
+    description:'MD5/SHA-1 are broken for security-sensitive use (integrity, signatures).',
+    recommendation:'Use hashlib.sha256 or better; use a password hash (bcrypt/argon2) for credentials.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+  { id:'PY-007', pattern:/verify\s*=\s*False|_create_unverified_context/, severity:SEV.CRITICAL, title:'TLS certificate verification disabled',
+    description:'Disabling TLS verification allows interception of traffic via MITM.',
+    recommendation:'Always verify certificates; fix the CA bundle/hostname issue rather than disabling verification.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-NETWORK-1' },
+  { id:'PY-008', pattern:/\.execute\(\s*(f['"]|['"].*%s.*['"]\s*%|['"].*\+)/, severity:SEV.CRITICAL, title:'Possible SQL injection',
+    description:'A SQL query appears to be built with string formatting/concatenation instead of parameter binding.',
+    recommendation:'Use parameterized queries / the DB-API placeholder syntax (e.g. cursor.execute(sql, params)) instead of building SQL strings.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'PY-009', pattern:/app\.run\([^)]*debug\s*=\s*True/, severity:SEV.MEDIUM, title:'Flask debug mode enabled',
+    description:'Flask debug mode exposes an interactive debugger (Werkzeug) that allows remote code execution if reachable.',
+    recommendation:'Never enable debug=True in production; use environment-based configuration.',
+    owasp:'A02:2025 Security Misconfiguration', masvs:'MASVS-CODE-1' },
+]);
+
+/* ---- PHP ---- */
+addRules('php', [
+  { id:'PHP-001', pattern:/\b(eval|system|exec|shell_exec|passthru|popen|proc_open)\s*\(/, severity:SEV.HIGH, title:'Command/code execution function',
+    description:'A shell/code execution function is called; if any argument is user-influenced this is command injection.',
+    recommendation:'Avoid shelling out to user input. If unavoidable, use escapeshellarg()/escapeshellcmd() and strict allowlists.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'PHP-002', pattern:/mysqli?_query\s*\([^)]*\$_(GET|POST|REQUEST|COOKIE)/, severity:SEV.CRITICAL, title:'Possible SQL injection',
+    description:'A SQL query is built directly from request input without apparent parameter binding.',
+    recommendation:'Use prepared statements (mysqli/PDO with bound parameters) instead of interpolating request data into SQL.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'PHP-003', pattern:/unserialize\s*\([^)]*\$_(GET|POST|REQUEST|COOKIE)/, severity:SEV.CRITICAL, title:'Insecure deserialization',
+    description:'unserialize() on user-controlled input can lead to PHP object injection and remote code execution.',
+    recommendation:'Use json_decode for data interchange instead of PHP serialization on untrusted input.',
+    owasp:'A08:2025 Software or Data Integrity Failures', masvs:'MASVS-CODE-1' },
+  { id:'PHP-004', pattern:/extract\s*\(\s*\$_(GET|POST|REQUEST)/, severity:SEV.HIGH, title:'Variable injection via extract()',
+    description:'extract() on request superglobals lets an attacker define/overwrite arbitrary variables in scope.',
+    recommendation:'Never call extract() on request data; access request fields explicitly by name.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'PHP-005', pattern:/(include|require)(_once)?\s*\([^)]*\$_(GET|POST|REQUEST)/, severity:SEV.CRITICAL, title:'Possible local/remote file inclusion',
+    description:'A file is included using a path derived from request input.',
+    recommendation:'Never pass request data into include/require paths; use a strict allowlist mapping keys to fixed file paths.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'PHP-006', pattern:/\b(md5|sha1)\s*\(/, severity:SEV.MEDIUM, title:'Weak hash algorithm',
+    description:'MD5/SHA-1 are unsuitable for password storage or integrity-critical use.',
+    recommendation:'Use password_hash()/password_verify() for credentials, SHA-256+ for integrity checks.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+  { id:'PHP-007', pattern:/echo\s+\$_(GET|POST|REQUEST)\[/, severity:SEV.HIGH, title:'Reflected output of request data (possible XSS)',
+    description:'Request data is echoed without an apparent htmlspecialchars()/escaping call.',
+    recommendation:'Escape all output with htmlspecialchars() (or a templating engine with auto-escaping) before rendering into HTML.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-PLATFORM-2' },
+  { id:'PHP-008', pattern:/error_reporting\s*\(\s*0\s*\)/, severity:SEV.INFO, title:'Error reporting suppressed',
+    description:'Disabling error reporting can hide misconfigurations, but may also be masking real issues during review.',
+    recommendation:'Keep detailed errors in logs (not user output) rather than fully suppressing them.',
+    owasp:'A02:2025 Security Misconfiguration', masvs:'MASVS-CODE-1' },
+]);
+
+/* ---- Java / Kotlin (also used for Android) ---- */
+addRules('java', [
+  { id:'JAVA-001', pattern:/MessageDigest\.getInstance\(\s*["'](MD5|SHA-?1)["']\s*\)/i, severity:SEV.MEDIUM, title:'Weak hash algorithm',
+    description:'MD5/SHA-1 are broken for security-sensitive use.',
+    recommendation:'Use SHA-256 or stronger; use a dedicated password hashing scheme (bcrypt/argon2/PBKDF2) for credentials.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+  { id:'JAVA-002', pattern:/Cipher\.getInstance\(\s*["']AES\/ECB/i, severity:SEV.HIGH, title:'ECB cipher mode',
+    description:'ECB mode does not provide semantic security and leaks patterns in the plaintext.',
+    recommendation:'Use an authenticated mode such as AES/GCM/NoPadding with a random IV/nonce per encryption.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+  { id:'JAVA-003', pattern:/Runtime\.getRuntime\(\)\.exec\(/, severity:SEV.CRITICAL, title:'Runtime.exec() call',
+    description:'Runtime.exec with dynamic input can lead to OS command injection.',
+    recommendation:'Avoid building shell commands from input; if unavoidable, use an argument array and strict validation.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'JAVA-004', pattern:/readObject\s*\(\s*\)|ObjectInputStream/, severity:SEV.HIGH, title:'Java native deserialization',
+    description:'Native Java deserialization of untrusted data is a well-known remote code execution vector.',
+    recommendation:'Avoid deserializing untrusted data; if required, use look-ahead validation/allowlisting of classes or a safer serialization format.',
+    owasp:'A08:2025 Software or Data Integrity Failures', masvs:'MASVS-CODE-1' },
+  { id:'JAVA-005', pattern:/checkServerTrusted\s*\([^)]*\)\s*\{\s*\}/, severity:SEV.CRITICAL, title:'TrustManager accepts all certificates',
+    description:'An empty checkServerTrusted() implementation disables certificate validation entirely.',
+    recommendation:'Implement proper certificate chain validation, or use the platform default TrustManager with certificate/public-key pinning.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-NETWORK-1' },
+  { id:'JAVA-006', pattern:/setJavaScriptEnabled\(\s*true\s*\)/, severity:SEV.MEDIUM, title:'WebView JavaScript enabled',
+    description:'Enabling JavaScript in a WebView widens the attack surface for XSS-style attacks if it loads untrusted content.',
+    recommendation:'Only enable JS for trusted, controlled content; combine with addJavascriptInterface review and a strict URL allowlist.',
+    owasp:'A02:2025 Security Misconfiguration', masvs:'MASVS-PLATFORM-2' },
+  { id:'JAVA-007', pattern:/putString\(\s*["'][^"']*(password|token|secret)[^"']*["']/i, severity:SEV.MEDIUM, title:'Sensitive data in SharedPreferences',
+    description:'SharedPreferences is stored in plaintext on the device by default and is not a secure secrets store.',
+    recommendation:'Use EncryptedSharedPreferences (Jetpack Security) or the Android Keystore for sensitive values.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-STORAGE-1' },
+  { id:'JAVA-008', pattern:/Log\.[deiwv]\([^)]*(password|token|secret)/i, severity:SEV.MEDIUM, title:'Sensitive data written to logs',
+    description:'Logging credentials/tokens can leak them via logcat or crash/log aggregation tools.',
+    recommendation:'Never log secrets; scrub sensitive fields before logging, and disable verbose logging in release builds.',
+    owasp:'A09:2025 Security Logging & Alerting Failures', masvs:'MASVS-STORAGE-2' },
+  { id:'JAVA-009', pattern:/rawQuery\s*\(\s*["'][^"']*\+|execSQL\s*\(\s*["'][^"']*\+/, severity:SEV.CRITICAL, title:'Possible SQL injection (SQLite)',
+    description:'A raw SQL query is built via string concatenation rather than bound parameters.',
+    recommendation:'Use parameterized queries (rawQuery(sql, selectionArgs) / SQLiteStatement bind methods) instead of concatenation.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'JAVA-010', pattern:/RootBeer|isDeviceRooted|SafetyNet|Superuser\.apk|com\.noshufou\.android\.su|com\.koushikdutta\.superuser|magisk/i, severity:SEV.INFO, title:'Root-detection indicator found',
+    description:'Code references a known root-detection library or technique — a positive resilience signal.',
+    recommendation:'Confirm the check runs on all sensitive entry points and fails closed (blocks/limits functionality) on rooted devices, per MASVS-RESILIENCE-1.',
+    owasp:'A00 Informational', masvs:'MASVS-RESILIENCE-1' },
+]);
+
+/* ---- Swift / Objective-C (iOS) ---- */
+addRules('swift', [
+  { id:'IOS-001', pattern:/NSLog\([^)]*(password|token|secret)/i, severity:SEV.MEDIUM, title:'Sensitive data written to logs',
+    description:'Logging credentials/tokens can expose them via device logs.',
+    recommendation:'Remove sensitive values from log statements; strip verbose logging from release builds.',
+    owasp:'A09:2025 Security Logging & Alerting Failures', masvs:'MASVS-STORAGE-2' },
+  { id:'IOS-002', pattern:/kSecAttrAccessibleAlways\b/, severity:SEV.MEDIUM, title:'Overly permissive Keychain accessibility',
+    description:'kSecAttrAccessibleAlways allows the item to be read even when the device is locked, and is deprecated.',
+    recommendation:'Use kSecAttrAccessibleWhenUnlockedThisDeviceOnly (or similarly restrictive) accessibility for Keychain items.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-STORAGE-1' },
+  { id:'IOS-003', pattern:/Cydia\.app|cydia:\/\/|isJailbroken|jailbreak/i, severity:SEV.INFO, title:'Jailbreak-detection indicator found',
+    description:'Code references known jailbreak-detection markers — a positive resilience signal.',
+    recommendation:'Confirm detection runs at app launch and sensitive workflows, and that the app responds appropriately (per MASVS-RESILIENCE-1).',
+    owasp:'A00 Informational', masvs:'MASVS-RESILIENCE-1' },
+  { id:'IOS-004', pattern:/CC_MD5|CC_SHA1\(/, severity:SEV.MEDIUM, title:'Weak hash algorithm',
+    description:'MD5/SHA-1 are broken for security-sensitive use.',
+    recommendation:'Use CC_SHA256 or CryptoKit\'s SHA256 for integrity; use a dedicated KDF for passwords.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+  { id:'IOS-005', pattern:/evaluateJavaScript\(\s*[a-zA-Z_]/, severity:SEV.HIGH, title:'WKWebView JS evaluation with variable input',
+    description:'Passing dynamic/variable content into evaluateJavaScript can enable script injection into the WebView context.',
+    recommendation:'Avoid injecting untrusted strings into evaluateJavaScript; use fixed scripts and pass data via well-typed message handlers.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-PLATFORM-2' },
+]);
+
+/* ---- Go ---- */
+addRules('go', [
+  { id:'GO-001', pattern:/exec\.Command\(/, severity:SEV.HIGH, title:'External command execution',
+    description:'exec.Command with dynamic arguments can lead to command injection.',
+    recommendation:'Validate/allowlist arguments; avoid building commands from unsanitized input.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'GO-002', pattern:/InsecureSkipVerify\s*:\s*true/, severity:SEV.CRITICAL, title:'TLS certificate verification disabled',
+    description:'InsecureSkipVerify disables TLS certificate validation, enabling MITM attacks.',
+    recommendation:'Remove InsecureSkipVerify; configure a proper CA pool instead.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-NETWORK-1' },
+  { id:'GO-003', pattern:/md5\.New\(\)|sha1\.New\(\)/, severity:SEV.MEDIUM, title:'Weak hash algorithm',
+    description:'MD5/SHA-1 are broken for security-sensitive use.',
+    recommendation:'Use crypto/sha256 or stronger.', owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+]);
+
+/* ---- Ruby ---- */
+addRules('ruby', [
+  { id:'RB-001', pattern:/\b(eval|system)\s*\(|`[^`]+#\{/, severity:SEV.HIGH, title:'Command/code execution with interpolation',
+    description:'eval/system or backticks with string interpolation can lead to code/command injection.',
+    recommendation:'Avoid shelling out with interpolated strings; use Open3 with an argument array and validate input.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'RB-002', pattern:/Marshal\.load\s*\(/, severity:SEV.HIGH, title:'Insecure deserialization (Marshal)',
+    description:'Marshal.load on untrusted data can instantiate arbitrary objects and execute code.',
+    recommendation:'Use JSON for untrusted data interchange instead of Marshal.',
+    owasp:'A08:2025 Software or Data Integrity Failures', masvs:'MASVS-CODE-1' },
+  { id:'RB-003', pattern:/where\(\s*["'].*#\{/, severity:SEV.CRITICAL, title:'Possible SQL injection (ActiveRecord)',
+    description:'A where() clause is built with string interpolation instead of bound parameters.',
+    recommendation:'Use ActiveRecord parameter binding, e.g. where("col = ?", value), instead of interpolating into the SQL string.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'RB-004', pattern:/Digest::(MD5|SHA1)/, severity:SEV.MEDIUM, title:'Weak hash algorithm',
+    description:'MD5/SHA-1 are broken for security-sensitive use.',
+    recommendation:'Use Digest::SHA256 or bcrypt/argon2 for password hashing.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+]);
+
+/* ---- Perl ---- */
+addRules('perl', [
+  { id:'PL-001', pattern:/\bopen\s*\(\s*\$[a-zA-Z0-9_]+\s*,\s*['"]?[^>|<]/, severity:SEV.HIGH,
+    title:'Unsafe two-argument open()', description:'Perl two-argument open can interpret shell metacharacters and execute commands when the mode or path is attacker-controlled.',
+    recommendation:'Use three-argument open with a fixed mode, lexical filehandles, and validated paths; never pass untrusted text as the command form.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'PL-002', pattern:/\beval\s*\{|\bsystem\s*\(/, severity:SEV.HIGH,
+    title:'Perl dynamic/code or command execution', description:'Perl eval blocks and system() can execute attacker-controlled code or shell commands.',
+    recommendation:'Avoid eval/system for untrusted input; use strict allowlists and list-form process execution where a subprocess is unavoidable.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+]);
+
+/* ---- Rust ---- */
+addRules('rust', [
+  { id:'RS-001', pattern:/Command::new\s*\(/, severity:SEV.HIGH,
+    title:'External command execution', description:'std::process::Command launches an operating-system process and requires review of command and argument sources.',
+    recommendation:'Use fixed executable names, pass arguments separately, and validate or allowlist any user-controlled values.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'RS-002', pattern:/unsafe\s*\{/, severity:SEV.MEDIUM,
+    title:'Unsafe Rust block', description:'An unsafe block bypasses Rust’s normal memory-safety guarantees and requires focused manual review.',
+    recommendation:'Minimize unsafe code, document its safety invariants, and encapsulate it behind safe APIs with tests and sanitizers.',
+    owasp:'A06:2025 Insecure Design', masvs:'MASVS-CODE-1' },
+  { id:'RS-003', pattern:/md5::|Sha1::|sha1::/, severity:SEV.MEDIUM,
+    title:'Weak hash algorithm', description:'MD5/SHA-1 are unsuitable for security-sensitive integrity or authentication use.',
+    recommendation:'Use a modern SHA-2/SHA-3 or a dedicated password hashing/KDF scheme as appropriate.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+]);
+
+/* ---- C# ---- */
+addRules('csharp', [
+  { id:'CS-001', pattern:/MD5\.Create\(\)|SHA1\.Create\(\)/, severity:SEV.MEDIUM, title:'Weak hash algorithm',
+    description:'MD5/SHA-1 are broken for security-sensitive use.',
+    recommendation:'Use SHA256.Create() or stronger; use ASP.NET Identity password hashing for credentials.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-CRYPTO-1' },
+  { id:'CS-002', pattern:/Process\.Start\(/, severity:SEV.HIGH, title:'External process execution',
+    description:'Process.Start with dynamic arguments can lead to command injection.',
+    recommendation:'Avoid building process arguments from unsanitized input; use ProcessStartInfo with argument lists and strict validation.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+  { id:'CS-003', pattern:/ServerCertificateValidationCallback\s*[+]?=\s*.*=>\s*true/, severity:SEV.CRITICAL, title:'TLS certificate validation bypassed',
+    description:'The certificate validation callback unconditionally returns true, disabling TLS trust checks.',
+    recommendation:'Remove the bypass; implement proper certificate validation or pinning.',
+    owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-NETWORK-1' },
+  { id:'CS-004', pattern:/SqlCommand\([^)]*\+/, severity:SEV.CRITICAL, title:'Possible SQL injection',
+    description:'A SqlCommand is constructed via string concatenation instead of parameters.',
+    recommendation:'Use parameterized queries (SqlParameter) instead of concatenating input into SQL text.',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+]);
+
+/* ---- C / C++ ---- */
+addRules('cpp', [
+  { id:'CPP-001', pattern:/\b(strcpy|strcat|gets|sprintf)\s*\(/, severity:SEV.HIGH, title:'Unsafe C string function',
+    description:'strcpy/strcat/gets/sprintf perform no bounds checking and are classic buffer-overflow sources.',
+    recommendation:'Use bounded variants (strncpy/strncat/snprintf) or safer string abstractions.',
+    owasp:'A03:2025 Software Supply Chain Failures', masvs:'MASVS-CODE-1' },
+  { id:'CPP-002', pattern:/\bsystem\s*\(/, severity:SEV.CRITICAL, title:'system() call',
+    description:'system() invokes a shell with the given string; unsanitized input leads to command injection.',
+    recommendation:'Use exec-family calls with argument arrays and strict validation instead of system().',
+    owasp:'A05:2025 Injection', masvs:'MASVS-CODE-1' },
+]);
+
+/* ---------------------------------------------------------------------
+   Android Manifest semantic checks (consumed by the AXML parser output)
+   --------------------------------------------------------------------- */
+const DANGEROUS_PERMISSIONS = [
+  'READ_SMS','SEND_SMS','RECEIVE_SMS','READ_CALL_LOG','WRITE_CALL_LOG','PROCESS_OUTGOING_CALLS',
+  'ACCESS_FINE_LOCATION','ACCESS_BACKGROUND_LOCATION','RECORD_AUDIO','CAMERA',
+  'READ_CONTACTS','WRITE_CONTACTS','READ_EXTERNAL_STORAGE','WRITE_EXTERNAL_STORAGE',
+  'SYSTEM_ALERT_WINDOW','REQUEST_INSTALL_PACKAGES','BIND_ACCESSIBILITY_SERVICE','READ_PHONE_STATE'
+];
+
+/* =======================================================================
+   Android binary XML (AXML) parser — used for AndroidManifest.xml inside
+   an APK, which is stored in Android's compiled binary XML chunk format
+   rather than plain text. Best-effort implementation of the public,
+   well-documented ResourceTypes chunk format; wrapped in try/catch by
+   callers so a malformed/unusual manifest degrades to a string-based
+   fallback instead of crashing the scan.
+   ======================================================================= */
+function parseAXML(buf){
+  const dv = new DataView(buf);
+  let strings = [];
+  const nodes = []; // flattened element events: {type:'start'|'end', name, attrs:[{name,value}]}
+  let offset = 0;
+
+  function u16(o){ return dv.getUint16(o, true); }
+  function u32(o){ return dv.getUint32(o, true); }
+
+  // ---- header ----
+  offset = 8; // skip file chunk header (type,headerSize,size)
+
+  function readStringPool(chunkStart){
+    const chunkSize = u32(chunkStart+4);
+    const stringCount = u32(chunkStart+8);
+    const styleCount = u32(chunkStart+12);
+    const flags = u32(chunkStart+16);
+    const stringsStart = u32(chunkStart+20);
+    const isUtf8 = (flags & 0x100) !== 0;
+    const out = [];
+    for (let i=0;i<stringCount;i++){
+      const entryOff = u32(chunkStart+28 + i*4);
+      const strOff = chunkStart + stringsStart + entryOff;
+      if (isUtf8){
+        let p = strOff;
+        // utf16 length (in chars) - variable length, skip
+        let b0 = dv.getUint8(p); p += (b0 & 0x80) ? 2 : 1;
+        // utf8 length
+        let b1 = dv.getUint8(p); let len;
+        if (b1 & 0x80){ len = ((b1 & 0x7f) << 8) | dv.getUint8(p+1); p += 2; }
+        else { len = b1; p += 1; }
+        const bytes = new Uint8Array(buf, p, len);
+        out.push(new TextDecoder('utf-8').decode(bytes));
+      } else {
+        let p = strOff;
+        let u0 = dv.getUint16(p, true); let len;
+        if (u0 & 0x8000){ len = ((u0 & 0x7fff) << 16) | dv.getUint16(p+2, true); p += 4; }
+        else { len = u0; p += 2; }
+        const chars = new Uint16Array(len);
+        for (let k=0;k<len;k++) chars[k] = dv.getUint16(p + k*2, true);
+        out.push(String.fromCharCode.apply(null, chars));
+      }
+    }
+    return { strings: out, next: chunkStart + chunkSize };
+  }
+
+  function resolveStr(idx){
+    if (idx === -1 || idx === 0xFFFFFFFF) return null;
+    return strings[idx] !== undefined ? strings[idx] : null;
+  }
+
+  // walk top-level chunks
+  let pos = 8;
+  const fileSize = buf.byteLength;
+  while (pos < fileSize - 8){
+    const type = u16(pos);
+    const headerSize = u16(pos+2);
+    const size = u32(pos+4);
+    if (size <= 0 || pos + size > fileSize) break;
+    if (type === 0x0001){ // RES_STRING_POOL_TYPE
+      const r = readStringPool(pos);
+      strings = r.strings;
+    } else if (type === 0x0100 || type === 0x0101){ // NS start/end - ignore content
+    } else if (type === 0x0102){ // START_ELEMENT
+      const nsIdx = u32(pos+16);
+      const nameIdx = u32(pos+20);
+      const attrCount = u16(pos+28);
+      const attrSize = u16(pos+26); // size per attribute struct (usually 20)
+      const attrs = [];
+      let ap = pos + 36; // node header(16) + 20 bytes elt header up to attributeCount region... computed below precisely
+      // Precise offsets per ResXMLTree_attrExt: after node header(16 bytes: chunk hdr8+line4+comment4):
+      // ns(4) name(4) attributeStart(2) attributeSize(2) attributeCount(2) idIndex(2) classIndex(2) styleIndex(2)
+      const attrStart = u16(pos+24);
+      ap = pos + 16 + attrStart;
+      for (let i=0;i<attrCount;i++){
+        const base = ap + i*attrSize;
+        const aNs = u32(base);
+        const aNameIdx = u32(base+4);
+        const aRawValIdx = u32(base+8);
+        const dataType = dv.getUint8(base+15);
+        const data = u32(base+16);
+        let value;
+        if (dataType === 0x03){ value = resolveStr(data); }
+        else if (dataType === 0x12){ value = (data !== 0); } // boolean
+        else if (dataType === 0x10 || dataType === 0x11){ value = data; } // int/hex
+        else { value = resolveStr(aRawValIdx) !== null ? resolveStr(aRawValIdx) : data; }
+        attrs.push({ name: resolveStr(aNameIdx), value });
+      }
+      nodes.push({ type:'start', name: resolveStr(nameIdx), attrs });
+    } else if (type === 0x0103){ // END_ELEMENT
+      const nameIdx = u32(pos+20);
+      nodes.push({ type:'end', name: resolveStr(nameIdx) });
+    }
+    pos += size;
+  }
+  return nodes;
+}
+
+function findAttr(attrs, name){
+  const a = attrs.find(x => x.name === name);
+  return a ? a.value : undefined;
+}
+
+/* Walks the flattened AXML node list and extracts manifest-relevant facts */
+function analyzeManifestNodes(nodes){
+  const info = {
+    package:null, minSdk:null, targetSdk:null, debuggable:null, allowBackup:null,
+    usesCleartextTraffic:null, permissions:[], exportedComponents:[]
+  };
+  let stack = [];
+  nodes.forEach(n=>{
+    if (n.type === 'start'){
+      stack.push(n.name);
+      if (n.name === 'manifest'){
+        info.package = findAttr(n.attrs,'package') || info.package;
+      }
+      if (n.name === 'uses-sdk'){
+        if (findAttr(n.attrs,'minSdkVersion') !== undefined) info.minSdk = findAttr(n.attrs,'minSdkVersion');
+        if (findAttr(n.attrs,'targetSdkVersion') !== undefined) info.targetSdk = findAttr(n.attrs,'targetSdkVersion');
+      }
+      if (n.name === 'application'){
+        if (findAttr(n.attrs,'debuggable') !== undefined) info.debuggable = findAttr(n.attrs,'debuggable');
+        if (findAttr(n.attrs,'allowBackup') !== undefined) info.allowBackup = findAttr(n.attrs,'allowBackup');
+        if (findAttr(n.attrs,'usesCleartextTraffic') !== undefined) info.usesCleartextTraffic = findAttr(n.attrs,'usesCleartextTraffic');
+      }
+      if (n.name === 'uses-permission'){
+        const p = findAttr(n.attrs,'name');
+        if (p) info.permissions.push(p);
+      }
+      if (['activity','service','receiver','provider'].includes(n.name)){
+        const exported = findAttr(n.attrs,'exported');
+        const name = findAttr(n.attrs,'name') || '(unnamed)';
+        const hasPermission = findAttr(n.attrs,'permission') !== undefined;
+        if (exported === true){
+          info.exportedComponents.push({ kind:n.name, name, hasPermission });
+        }
+      }
+    } else {
+      stack.pop();
+    }
+  });
+  return info;
+}
+
+function parseTextManifest(text){
+  const info = {
+    package:null, minSdk:null, targetSdk:null, debuggable:null, allowBackup:null,
+    usesCleartextTraffic:null, permissions:[], exportedComponents:[]
+  };
+  const attr = (name)=>{
+    const match = text.match(new RegExp(`(?:android:)?${name}\\s*=\\s*["']([^"']+)["']`, 'i'));
+    return match ? match[1] : null;
+  };
+  const bool = (name)=>{
+    const value = attr(name);
+    return value === null ? null : /^true$/i.test(value);
+  };
+  const packageMatch = text.match(/<manifest\b[^>]*\bpackage\s*=\s*["']([^"']+)["']/i);
+  const minSdk = attr('minSdkVersion');
+  const targetSdk = attr('targetSdkVersion');
+  info.package = packageMatch ? packageMatch[1] : null;
+  info.minSdk = minSdk === null ? null : (Number(minSdk) || minSdk);
+  info.targetSdk = targetSdk === null ? null : (Number(targetSdk) || targetSdk);
+  info.debuggable = bool('debuggable');
+  info.allowBackup = bool('allowBackup');
+  info.usesCleartextTraffic = bool('usesCleartextTraffic');
+  const permissionRe = /<uses-permission\b[^>]*\bandroid:name\s*=\s*["']([^"']+)["']/gi;
+  let permissionMatch;
+  while ((permissionMatch = permissionRe.exec(text))) info.permissions.push(permissionMatch[1]);
+  const componentRe = /<(activity|service|receiver|provider)\b([^>]*)>/gi;
+  let componentMatch;
+  while ((componentMatch = componentRe.exec(text))){
+    const attrs = componentMatch[2];
+    const exported = attrs.match(/\b(?:android:)?exported\s*=\s*["']([^"']+)["']/i);
+    if (exported && /^true$/i.test(exported[1])){
+      const name = attrs.match(/\b(?:android:)?name\s*=\s*["']([^"']+)["']/i);
+      const permission = /\b(?:android:)?permission\s*=/i.test(attrs);
+      info.exportedComponents.push({ kind:componentMatch[1], name:name ? name[1] : '(unnamed)', hasPermission:permission });
+    }
+  }
+  return info;
+}
+
+/* =======================================================================
+   Binary plist (bplist00) parser — used for Info.plist inside an IPA
+   when Xcode has compiled it to binary form (the common case). Falls back
+   to DOMParser XML plist parsing for text-based plists.
+   ======================================================================= */
+function parseBinaryPlist(buf){
+  const bytes = new Uint8Array(buf);
+  const dv = new DataView(buf);
+  const trailer = bytes.slice(bytes.length-32);
+  const tdv = new DataView(trailer.buffer, trailer.byteOffset, trailer.byteLength);
+  const offsetIntSize = tdv.getUint8(6);
+  const objectRefSize = tdv.getUint8(7);
+  const numObjects = Number(tdv.getBigUint64(8));
+  const topObject = Number(tdv.getBigUint64(16));
+  const offsetTableOffset = Number(tdv.getBigUint64(24));
+
+  function readUInt(off, size){
+    let v = 0;
+    for (let i=0;i<size;i++) v = v*256 + dv.getUint8(off+i);
+    return v;
+  }
+  const offsetTable = [];
+  for (let i=0;i<numObjects;i++){
+    offsetTable.push(readUInt(offsetTableOffset + i*offsetIntSize, offsetIntSize));
+  }
+
+  function readObject(idx){
+    const off = offsetTable[idx];
+    const marker = dv.getUint8(off);
+    const type = marker >> 4;
+    let extra = marker & 0x0f;
+
+    function readCount(o){
+      if (extra !== 0x0f) return { count: extra, next: o+1 };
+      const m2 = dv.getUint8(o+1);
+      const sz = 1 << (m2 & 0x0f);
+      const count = readUInt(o+2, sz);
+      return { count, next: o + 2 + sz };
+    }
+
+    if (type === 0x0){
+      if (marker === 0x08) return false;
+      if (marker === 0x09) return true;
+      return null;
+    }
+    if (type === 0x1){ // int
+      const sz = 1 << extra;
+      let v = 0n;
+      for (let i=0;i<sz;i++) v = (v << 8n) | BigInt(dv.getUint8(off+1+i));
+      if (sz === 8 && (v & (1n<<63n))) v -= (1n<<64n);
+      return Number(v);
+    }
+    if (type === 0x2){ // real
+      const sz = 1 << extra;
+      return sz === 4 ? dv.getFloat32(off+1,false) : dv.getFloat64(off+1,false);
+    }
+    if (type === 0x3){ return dv.getFloat64(off+1,false); } // date
+    if (type === 0x4){ // data
+      const r = readCount(off);
+      return bytes.slice(r.next, r.next + r.count);
+    }
+    if (type === 0x5){ // ascii string
+      const r = readCount(off);
+      return new TextDecoder('ascii').decode(bytes.slice(r.next, r.next + r.count));
+    }
+    if (type === 0x6){ // utf16 string
+      const r = readCount(off);
+      const chars = [];
+      for (let i=0;i<r.count;i++) chars.push(dv.getUint16(r.next + i*2, false));
+      return String.fromCharCode.apply(null, chars);
+    }
+    if (type === 0x8){ // uid
+      const sz = extra + 1;
+      return readUInt(off+1, sz);
+    }
+    if (type === 0xA){ // array
+      const r = readCount(off);
+      const arr = [];
+      for (let i=0;i<r.count;i++){
+        const refOff = r.next + i*objectRefSize;
+        const ref = readUInt(refOff, objectRefSize);
+        arr.push(readObject(ref));
+      }
+      return arr;
+    }
+    if (type === 0xD){ // dict
+      const r = readCount(off);
+      const dict = {};
+      const keyRefs = [], valRefs = [];
+      for (let i=0;i<r.count;i++) keyRefs.push(readUInt(r.next + i*objectRefSize, objectRefSize));
+      const valStart = r.next + r.count*objectRefSize;
+      for (let i=0;i<r.count;i++) valRefs.push(readUInt(valStart + i*objectRefSize, objectRefSize));
+      for (let i=0;i<r.count;i++){
+        const k = readObject(keyRefs[i]);
+        dict[k] = readObject(valRefs[i]);
+      }
+      return dict;
+    }
+    return null;
+  }
+
+  return readObject(topObject);
+}
+
+function parsePlist(buf){
+  const bytes = new Uint8Array(buf);
+  const magic = new TextDecoder('ascii').decode(bytes.slice(0,8));
+  if (magic.startsWith('bplist')) return parseBinaryPlist(buf);
+  // XML plist fallback
+  const text = new TextDecoder('utf-8').decode(bytes);
+  const doc = new DOMParser().parseFromString(text, 'text/xml');
+  function parseNode(node){
+    if (!node) return null;
+    switch(node.nodeName){
+      case 'dict': {
+        const out = {}; let key = null;
+        for (const child of node.children){
+          if (child.nodeName === 'key'){ key = child.textContent; }
+          else if (key !== null){ out[key] = parseNode(child); key = null; }
+        }
+        return out;
+      }
+      case 'array': return Array.from(node.children).map(parseNode);
+      case 'string': return node.textContent;
+      case 'true': return true;
+      case 'false': return false;
+      case 'integer': return parseInt(node.textContent,10);
+      case 'real': return parseFloat(node.textContent);
+      default: return node.textContent;
+    }
+  }
+  const plistEl = doc.querySelector('plist');
+  const root = plistEl ? plistEl.children[0] : null;
+  return parseNode(root);
+}
+
+/* =======================================================================
+   Ingestion — normalizes any input (loose files, folders, .zip/.apk/.ipa)
+   into a flat list of { path, bytes:Uint8Array, isBinaryContainer? }
+   =======================================================================*/
+const BINARY_CONTAINER_EXT = ['apk','ipa','zip'];
+const BINARY_SCAN_EXT = ['dex','so','dylib']; // string-extraction targets
+const SKIP_EXT = ['png','jpg','jpeg','gif','webp','ttf','otf','woff','woff2','mp3','mp4','mov','ico'];
+
+async function fileToEntries(file){
+  const ext = extOf(file.name);
+  if (BINARY_CONTAINER_EXT.includes(ext)){
+    const buf = await file.arrayBuffer();
+    try {
+      const zip = await JSZip.loadAsync(buf);
+      const entries = [];
+      const paths = Object.keys(zip.files);
+      for (let pathIndex=0; pathIndex<paths.length; pathIndex++){
+        const p = paths[pathIndex];
+        const zf = zip.files[p];
+        if (zf.dir) continue;
+        const eExt = extOf(p);
+        if (SKIP_EXT.includes(eExt)) continue;
+        const data = await zf.async('uint8array');
+        entries.push({ path: `${file.name}/${p}`, bytes: data, container: file.name });
+        if (pathIndex % 6 === 0){
+          await new Promise(resolve => {
+            if (typeof requestIdleCallback === 'function') requestIdleCallback(resolve, { timeout: 50 });
+            else setTimeout(resolve, 0);
+          });
+        }
+      }
+      return entries;
+    } catch(e){
+      // Not a valid zip — treat as opaque binary, still string-scan it
+      return [{ path:file.name, bytes:new Uint8Array(buf), container:file.name, archiveError:true }];
+    }
+  }
+  const buf = await file.arrayBuffer();
+  return [{ path: file.webkitRelativePath || file.name, bytes: new Uint8Array(buf) }];
+}
+
+function isTextFile(path, bytes){
+  const ext = extOf(path);
+  if (BINARY_SCAN_EXT.includes(ext)) return false;
+  if (SKIP_EXT.includes(ext)) return false;
+  // sniff: consider it text if the first 512 bytes are mostly printable
+  const sample = bytes.subarray(0, Math.min(512, bytes.length));
+  let printable = 0;
+  for (let i=0;i<sample.length;i++){
+    const b = sample[i];
+    if ((b>=32&&b<=126) || b===9 || b===10 || b===13) printable++;
+  }
+  return sample.length === 0 || (printable / sample.length) > 0.85;
+}
+
+/* =======================================================================
+   Findings model + core scanning routines
+   =======================================================================*/
+let findingSeq = 0;
+function makeFinding(f){
+  findingSeq++;
+  return Object.assign({ id:'F'+findingSeq }, f);
+}
+
+function scanTextForRules(path, text, findings){
+  const lang = langOf(path);
+  const lines = text.split(/\r\n|\n/);
+  const applicable = RULES.filter(r => r.lang === 'generic' || r.lang === lang);
+  applicable.forEach(rule=>{
+    for (let i=0;i<lines.length;i++){
+      const originalLine = lines[i];
+      const analysisLine = codeOnlyLine(originalLine, lang);
+      if (!analysisLine.trim()) continue;
+      if (rule.pattern.test(analysisLine)){
+        const context = ruleContext(rule, analysisLine);
+        if (context.skip) {
+          rule.pattern.lastIndex = 0;
+          continue;
+        }
+        findings.push(makeFinding({
+          severity: context.severity || rule.severity,
+          title: context.title || rule.title,
+          description: context.description || rule.description,
+          recommendation: rule.recommendation, file: path, line: i+1,
+          snippet: contextualSnippet(lines, i), owasp: rule.owasp, masvs: rule.masvs, ruleId: rule.id,
+          confidence: context.confidence || 'heuristic'
+        }));
+        rule.pattern.lastIndex = 0; // reset in case of global flags
+      }
+    }
+  });
+}
+
+function contextualSnippet(lines, index){
+  const start = Math.max(0, index - 1);
+  const end = Math.min(lines.length, index + 2);
+  return lines.slice(start, end).map((line, offset)=>{
+    const lineNumber = start + offset + 1;
+    const marker = lineNumber === index + 1 ? '▶' : ' ';
+    return `${marker} ${String(lineNumber).padStart(5, ' ')} | ${line.trim().slice(0, 180)}`;
+  }).join('\n');
+}
+
+/*
+ * Remove comments outside quoted strings before applying a rule. This keeps
+ * examples in comments from looking like executable sinks without pretending
+ * that a regex scanner understands the program's AST.
+ */
+function codeOnlyLine(line, lang){
+  let quote = null;
+  let escaped = false;
+  for (let i=0;i<line.length;i++){
+    const ch = line[i];
+    if (escaped){ escaped = false; continue; }
+    if (ch === '\\' && quote){ escaped = true; continue; }
+    if (quote){
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || (ch === '`' && lang === 'javascript')) {
+      quote = ch;
+      continue;
+    }
+    if (ch === '/' && line[i+1] === '/' && ['javascript','java','swift','objc','go','rust','perl','csharp','cpp'].includes(lang)){
+      return line.slice(0,i);
+    }
+    if (ch === '#' && ['python','ruby','perl'].includes(lang)){
+      return line.slice(0,i);
+    }
+  }
+  return line;
+}
+
+function ruleContext(rule, line){
+  const trimmed = line.trim();
+  const context = { confidence:'heuristic' };
+
+  // A literal-only eval/exec is still worth review, but is less indicative of
+  // an input-driven injection than a variable, concatenation, or interpolation.
+  if (rule.id === 'JS-001' || rule.id === 'PY-001'){
+    const call = line.match(/\b(?:eval|exec)\s*\((.*)\)/);
+    if (call && /^(['"`])[\s\S]*\1$/.test(call[1].trim()) &&
+        !/[+${}%]/.test(call[1])){
+      context.severity = SEV.MEDIUM;
+      context.title = 'Dynamic code evaluation with literal input';
+      context.description = 'The scanner found eval/exec with a literal argument. This is lower confidence than input-driven evaluation, but it should still be reviewed because the expression may change or become data-driven later.';
+      context.confidence = 'lower-confidence';
+    }
+  }
+
+  // A SQL sink that is only assembled from literals is not proof of injection.
+  if (/SQL|sql injection/i.test(rule.title) && !/(\$_(GET|POST|REQUEST|COOKIE)|request|params|query|input|user|f['"`]|#\{|\\\$|\+)/i.test(trimmed)){
+    context.severity = SEV.MEDIUM;
+    context.title = 'SQL construction requires review';
+    context.description = 'A SQL-related call matched a heuristic pattern, but this line does not visibly contain request input or interpolation. Confirm the query is parameterized and that values cannot become attacker-controlled.';
+    context.confidence = 'lower-confidence';
+  }
+  return context;
+}
+
+function scanStringsForSecrets(path, strings, findings){
+  const genericRules = RULES.filter(r => r.lang === 'generic');
+  const joined = strings; // array
+  const seen = new Set();
+  joined.forEach(s=>{
+    genericRules.forEach(rule=>{
+      if (rule.pattern.test(s) && !seen.has(rule.id+s)){
+        seen.add(rule.id+s);
+        findings.push(makeFinding({
+          severity: rule.severity, title: rule.title + ' (embedded binary string)',
+          description: rule.description, recommendation: rule.recommendation,
+          file: path, line: null, snippet: s.slice(0,180), owasp: rule.owasp, masvs: rule.masvs, ruleId: rule.id
+        }));
+      }
+    });
+  });
+  // root/jailbreak indicators inside compiled binaries
+  const rootMarkers = ['RootBeer','isDeviceRooted','SafetyNet','Superuser.apk','magisk','com.noshufou.android.su'];
+  const jbMarkers = ['Cydia.app','cydia://','isJailbroken','MobileSubstrate'];
+  strings.forEach(s=>{
+    if (rootMarkers.some(m => s.includes(m))){
+      findings.push(makeFinding({ severity:SEV.INFO, title:'Root-detection indicator found (embedded string)',
+        description:'A known root-detection signature was found in the compiled binary.',
+        recommendation:'Confirm the check runs on sensitive entry points and fails closed on rooted devices, per MASVS-RESILIENCE-1.',
+        file:path, line:null, snippet:s.slice(0,120), owasp:'A00 Informational', masvs:'MASVS-RESILIENCE-1', ruleId:'BIN-ROOT' }));
+    }
+    if (jbMarkers.some(m => s.includes(m))){
+      findings.push(makeFinding({ severity:SEV.INFO, title:'Jailbreak-detection indicator found (embedded string)',
+        description:'A known jailbreak-detection signature was found in the compiled binary.',
+        recommendation:'Confirm detection runs at launch and on sensitive workflows, per MASVS-RESILIENCE-1.',
+        file:path, line:null, snippet:s.slice(0,120), owasp:'A00 Informational', masvs:'MASVS-RESILIENCE-1', ruleId:'BIN-JB' }));
+    }
+  });
+}
+
+function manifestToFindings(info, path, findings){
+  if (info.debuggable === true){
+    findings.push(makeFinding({ severity:SEV.CRITICAL, title:'Application is debuggable',
+      description:'android:debuggable="true" allows attaching a debugger to the release app, exposing internals and enabling code/data extraction.',
+      recommendation:'Remove android:debuggable or ensure it is false in release builds (Android build tooling sets this automatically for release builds — confirm the manifest override is not forcing it true).',
+      file:path, line:null, snippet:'android:debuggable="true"', owasp:'A02:2025 Security Misconfiguration', masvs:'MASVS-RESILIENCE-2', maswe:'MASWE-0014', ruleId:'AND-DEBUG' }));
+  }
+  if (info.allowBackup !== false){
+    findings.push(makeFinding({ severity:SEV.MEDIUM, title:'Application data backup allowed',
+      description:'android:allowBackup is not explicitly disabled (defaults to true), which lets app data be extracted via adb backup on many devices.',
+      recommendation:'Set android:allowBackup="false" unless backups are explicitly required and app data contains no sensitive information.',
+      file:path, line:null, snippet:'android:allowBackup (not disabled)', owasp:'A02:2025 Security Misconfiguration', masvs:'MASVS-STORAGE-1', maswe:'MASWE-0012', ruleId:'AND-BACKUP' }));
+  }
+  if (info.usesCleartextTraffic === true){
+    findings.push(makeFinding({ severity:SEV.HIGH, title:'Cleartext network traffic permitted',
+      description:'android:usesCleartextTraffic="true" allows plaintext HTTP, exposing traffic to interception/tampering.',
+      recommendation:'Set usesCleartextTraffic to false and define a Network Security Config that only allows HTTPS.',
+      file:path, line:null, snippet:'android:usesCleartextTraffic="true"', owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-NETWORK-1', maswe:'MASWE-0020', ruleId:'AND-CLEARTEXT' }));
+  }
+  info.exportedComponents.forEach(c=>{
+    if (!c.hasPermission){
+      findings.push(makeFinding({ severity:SEV.HIGH, title:`Exported ${c.kind} without a permission guard`,
+        description:`${c.name} is exported (accessible to other apps) with no permission required to invoke it.`,
+        recommendation:'Set android:exported="false" if the component is not meant to be used by other apps, or require a signature-level permission if it must be exported.',
+        file:path, line:null, snippet:`<${c.kind} android:name="${c.name}" android:exported="true">`, owasp:'A01:2025 Broken Access Control', masvs:'MASVS-PLATFORM-1', ruleId:'AND-EXPORTED' }));
+    }
+  });
+  if (info.minSdk !== null && Number(info.minSdk) < 21){
+    findings.push(makeFinding({ severity:SEV.LOW, title:'Very low minimum SDK version',
+      description:`minSdkVersion is ${info.minSdk}, supporting Android versions that lack many modern platform security mitigations.`,
+      recommendation:'Raise minSdkVersion where feasible to benefit from newer platform security features (network security config, scoped storage, etc.).',
+      file:path, line:null, snippet:`minSdkVersion=${info.minSdk}`, owasp:'A03:2025 Software Supply Chain Failures', masvs:'MASVS-PLATFORM-1', ruleId:'AND-MINSDK' }));
+  }
+  const dangerous = info.permissions.filter(p => DANGEROUS_PERMISSIONS.some(d => p.endsWith(d)));
+  if (dangerous.length){
+    findings.push(makeFinding({ severity:SEV.INFO, title:'Sensitive permissions requested',
+      description:`The app requests ${dangerous.length} sensitive permission(s): ${dangerous.map(d=>d.split('.').pop()).join(', ')}.`,
+      recommendation:'Confirm each sensitive permission is necessary, requested with runtime justification (Android 6+ runtime prompts), and documented for store review / MASVS-PLATFORM-1.',
+      file:path, line:null, snippet:dangerous.map(d=>d.split('.').pop()).join(', '), owasp:'A01:2025 Broken Access Control', masvs:'MASVS-PLATFORM-1', ruleId:'AND-PERMS' }));
+  }
+  if (!findings.some(f => f.ruleId === 'AND-ROOT-ABSENT')){
+    // placeholder handled globally after full project scan (see finalizeRootDetectionCheck)
+  }
+}
+
+function plistToFindings(plist, path, findings){
+  if (!plist || typeof plist !== 'object') return;
+  const ats = plist.NSAppTransportSecurity;
+  if (ats && ats.NSAllowsArbitraryLoads === true){
+    findings.push(makeFinding({ severity:SEV.CRITICAL, title:'App Transport Security disabled globally',
+      description:'NSAllowsArbitraryLoads is true, allowing insecure (non-HTTPS / weak TLS) connections to any host.',
+      recommendation:'Remove NSAllowsArbitraryLoads and configure narrowly-scoped ATS exceptions only for specific domains that truly require them.',
+      file:path, line:null, snippet:'NSAllowsArbitraryLoads = true', owasp:'A04:2025 Cryptographic Failures', masvs:'MASVS-NETWORK-1', maswe:'MASWE-0020', ruleId:'IOS-ATS' }));
+  }
+  if (plist.UIFileSharingEnabled === true){
+    findings.push(makeFinding({ severity:SEV.MEDIUM, title:'iTunes/Finder file sharing enabled',
+      description:'UIFileSharingEnabled exposes the app\'s Documents directory to the user via Finder/iTunes file sharing.',
+      recommendation:'Disable UIFileSharingEnabled unless intentionally supporting file export, and avoid storing sensitive data in the shared Documents directory.',
+      file:path, line:null, snippet:'UIFileSharingEnabled = true', owasp:'A01:2025 Broken Access Control', masvs:'MASVS-STORAGE-1', ruleId:'IOS-FILESHARE' }));
+  }
+  if (Array.isArray(plist.CFBundleURLTypes) && plist.CFBundleURLTypes.length){
+    findings.push(makeFinding({ severity:SEV.INFO, title:'Custom URL scheme(s) registered',
+      description:'The app registers one or more custom URL schemes, which can be a vector for URL-scheme hijacking or unvalidated deep-link input.',
+      recommendation:'Validate all deep-link parameters as untrusted input, and consider Universal Links instead of custom schemes where possible.',
+      file:path, line:null, snippet:'CFBundleURLTypes present', owasp:'A01:2025 Broken Access Control', masvs:'MASVS-PLATFORM-1', ruleId:'IOS-URLSCHEME' }));
+  }
+}
+
+/* =======================================================================
+   Scan orchestrator
+   =======================================================================*/
+let allFindings = [];
+let scannedFileCount = 0;
+let projectLabel = 'project';
+let scanWarnings = [];
+
+async function runScan(files){
+  const dropzoneWrap = document.getElementById('dropzoneWrap');
+  const queuePanel = document.getElementById('queuePanel');
+  const progressFill = document.getElementById('progressFill');
+  const progressPct = document.getElementById('progressPct');
+  const progressStatus = document.getElementById('progressStatus');
+
+  dropzoneWrap.style.display = 'none';
+  queuePanel.style.display = 'block';
+  document.getElementById('results').style.display = 'none';
+
+  allFindings = [];
+  findingSeq = 0;
+  scannedFileCount = 0;
+  scanWarnings = [];
+  projectLabel = files.length === 1 ? files[0].name : (files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : `${files.length} files`);
+
+  // Step 1: expand all inputs into flat entries
+  progressStatus.textContent = 'Reading files…';
+  let entries = [];
+  for (let i=0;i<files.length;i++){
+    const f = files[i];
+    try {
+      const e = await fileToEntries(f);
+      entries = entries.concat(e);
+    } catch(err){
+      scanWarnings.push(`${f.name}: could not be read or expanded`);
+    }
+    progressFill.style.width = (5 + (i/files.length)*15) + '%';
+  }
+
+  scannedFileCount = entries.length;
+  let sawAndroidManifest = false, sawIosInfoPlist = false;
+  let rootDetectionFound = false, jbDetectionFound = false;
+  let scannedAnyMobile = false;
+
+  for (let i=0;i<entries.length;i++){
+    const entry = entries[i];
+    const pct = 20 + Math.round((i/Math.max(entries.length,1))*75);
+    progressFill.style.width = pct + '%';
+    progressPct.textContent = pct + '%';
+    progressStatus.textContent = 'Scanning ' + baseName(entry.path);
+    if (i % 8 === 0) await new Promise(r=>setTimeout(r,0)); // yield to keep UI responsive
+
+    const bName = baseName(entry.path);
+    const ext = extOf(entry.path);
+
+    try {
+        if (entry.archiveError){
+          scanWarnings.push(`${entry.path}: not a readable ZIP archive; only bounded binary-string inspection was attempted`);
+          const opaqueStrings = extractPrintableStrings(entry.bytes, 8);
+          scanStringsForSecrets(entry.path, opaqueStrings, allFindings);
+          if (opaqueStrings.truncated){
+            scanWarnings.push(`${entry.path}: binary inspection was capped at ${Math.round(opaqueStrings.scannedBytes / 1024 / 1024)} MB`);
+          }
+          continue;
+        }
+      if (bName === 'AndroidManifest.xml'){
+        scannedAnyMobile = true; sawAndroidManifest = true;
+        try {
+            const manifestBuffer = entry.bytes.buffer.slice(entry.bytes.byteOffset, entry.bytes.byteOffset+entry.bytes.byteLength);
+            const isXml = isTextFile(entry.path, entry.bytes);
+            const info = isXml
+              ? parseTextManifest(new TextDecoder('utf-8', {fatal:false}).decode(entry.bytes))
+              : analyzeManifestNodes(parseAXML(manifestBuffer));
+          manifestToFindings(info, entry.path, allFindings);
+        } catch(e){
+          // fallback: string scan the raw bytes for permission markers
+          const strs = extractPrintableStrings(entry.bytes, 8);
+          if (strs.truncated) scanWarnings.push(`${entry.path}: manifest fallback string scan was bounded`);
+          const perms = strs.filter(s => s.includes('android.permission.'));
+          if (perms.length) allFindings.push(makeFinding({ severity:SEV.INFO, title:'Permissions detected (fallback string scan)',
+            description:'Manifest binary structure could not be fully parsed; permission strings were recovered via raw scan instead.',
+            recommendation:'Manually confirm dangerous permissions are justified.', file:entry.path, line:null,
+            snippet:[...new Set(perms)].slice(0,10).join(', '), owasp:'A01:2025 Broken Access Control', masvs:'MASVS-PLATFORM-1', ruleId:'AND-FALLBACK'}));
+        }
+        continue;
+      }
+      if (bName === 'Info.plist'){
+        scannedAnyMobile = true; sawIosInfoPlist = true;
+        try {
+          const plist = parsePlist(entry.bytes.buffer.slice(entry.bytes.byteOffset, entry.bytes.byteOffset+entry.bytes.byteLength));
+          plistToFindings(plist, entry.path, allFindings);
+        } catch(e){ /* ignore malformed plist */ }
+        continue;
+      }
+      if (BINARY_SCAN_EXT.includes(ext)){
+        scannedAnyMobile = true;
+        const strs = extractPrintableStrings(entry.bytes, 8);
+        if (strs.truncated){
+          scanWarnings.push(`${entry.path}: binary string inspection was capped at ${Math.round(strs.scannedBytes / 1024 / 1024)} MB / ${MAX_BINARY_STRINGS.toLocaleString()} strings`);
+        }
+        const before = allFindings.length;
+        scanStringsForSecrets(entry.path, strs, allFindings);
+        if (allFindings.slice(before).some(f=>f.ruleId==='BIN-ROOT')) rootDetectionFound = true;
+        if (allFindings.slice(before).some(f=>f.ruleId==='BIN-JB')) jbDetectionFound = true;
+        continue;
+      }
+      if (isTextFile(entry.path, entry.bytes)){
+        const text = new TextDecoder('utf-8', {fatal:false}).decode(entry.bytes);
+        const lang = langOf(entry.path);
+        if (lang === 'java' || lang === 'swift' || lang === 'objc') scannedAnyMobile = true;
+        scanTextForRules(entry.path, text, allFindings);
+        if (/RootBeer|isDeviceRooted|SafetyNet|Superuser\.apk|magisk/i.test(text)) rootDetectionFound = true;
+        if (/Cydia\.app|cydia:\/\/|isJailbroken|MobileSubstrate/i.test(text)) jbDetectionFound = true;
+      }
+    } catch(err){
+      scanWarnings.push(`${entry.path}: parser skipped this file`);
+    }
+  }
+
+  // Global MASVS-RESILIENCE check: no root/jailbreak detection found anywhere in a mobile project
+  if (sawAndroidManifest && !rootDetectionFound){
+    allFindings.push(makeFinding({ severity:SEV.MEDIUM, title:'No root-detection mechanism found',
+      description:'No known root-detection library, API, or string signature was found anywhere in the scanned project.',
+      recommendation:'Implement root detection (e.g. RootBeer, SafetyNet/Play Integrity API) and respond appropriately on rooted devices, per OWASP MASVS-RESILIENCE-1.',
+      file:'(project-wide)', line:null, snippet:null, owasp:'A00 Informational', masvs:'MASVS-RESILIENCE-1', ruleId:'AND-ROOT-ABSENT' }));
+  }
+  if (sawIosInfoPlist && !jbDetectionFound){
+    allFindings.push(makeFinding({ severity:SEV.MEDIUM, title:'No jailbreak-detection mechanism found',
+      description:'No known jailbreak-detection signature was found anywhere in the scanned project.',
+      recommendation:'Implement jailbreak detection and respond appropriately (e.g. restrict sensitive functionality), per OWASP MASVS-RESILIENCE-1.',
+      file:'(project-wide)', line:null, snippet:null, owasp:'A00 Informational', masvs:'MASVS-RESILIENCE-1', ruleId:'IOS-JB-ABSENT' }));
+  }
+
+  progressFill.style.width = '100%';
+  progressPct.textContent = '100%';
+  progressStatus.textContent = 'Done — ' + allFindings.length + ' findings across ' + entries.length + ' files';
+  await new Promise(r=>setTimeout(r,300));
+  queuePanel.style.display = 'none';
+  renderResults();
+  if (scanWarnings.length) showToast(`${scanWarnings.length} file warning${scanWarnings.length === 1 ? '' : 's'} — scan completed`);
+}
+
+/* =======================================================================
+   Rendering
+   =======================================================================*/
+let activeFilter = 'all';
+let searchTerm = '';
+
+function severityCounts(){
+  const c = { critical:0, high:0, medium:0, low:0, info:0 };
+  allFindings.forEach(f=>{ c[f.severity] = (c[f.severity]||0)+1; });
+  return c;
+}
+
+function mappingCounts(field){
+  const counts = {};
+  allFindings.forEach(f=>{
+    const value = f[field];
+    if (value) counts[value] = (counts[value] || 0) + 1;
+  });
+  return counts;
+}
+
+function renderOwaspMapping(){
+  const root = document.getElementById('owaspResults');
+  if (!root) return;
+  if (!allFindings.length){
+    root.innerHTML = '<div class="empty-state">Run a source or mobile package scan to populate the OWASP mapping.</div>';
+    return;
+  }
+  const owasp = mappingCounts('owasp');
+  const masvs = mappingCounts('masvs');
+  const renderRows = (counts, emptyLabel)=>{
+    const entries = Object.entries(counts).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
+    const max = Math.max(...entries.map(([,count])=>count), 1);
+    if (!entries.length) return `<div class="empty-state" style="padding:20px 0;">${emptyLabel}</div>`;
+    return entries.map(([name,count])=>`
+      <div class="mapping-row">
+        <span class="mapping-name">${escapeHtml(name)}</span>
+        <span class="mapping-track"><span class="mapping-fill" style="width:${Math.max(5, count / max * 100)}%"></span></span>
+        <span class="mapping-count">${count}</span>
+      </div>`).join('');
+  };
+  const taggedMasvs = allFindings.filter(f=>f.masvs).length;
+  const coverage = Math.round(taggedMasvs / allFindings.length * 100);
+  root.innerHTML = `
+    <div class="mapping-note">
+      <b>${coverage}% of findings carry an OWASP MASVS tag.</b>
+      These are rule-level classifications for triage, not proof of compliance or complete coverage of the application.
+      The scanner uses the hardcoded OWASP Top 10:2025 and MASVS v2.1 labels shown here.
+    </div>
+    <div class="mapping-summary">
+      <div class="mapping-card"><h3>OWASP Top 10 mapping</h3>${renderRows(owasp, 'No OWASP Top 10 tags were produced.')}</div>
+      <div class="mapping-card"><h3>OWASP MASVS mapping</h3>${renderRows(masvs, 'No MASVS tags were produced.')}</div>
+    </div>`;
+}
+
+function renderResults(){
+  const root = document.getElementById('results');
+  root.style.display = 'block';
+  document.getElementById('btnNewScan').style.display = 'inline-flex';
+  document.getElementById('btnExportPdf').style.display = allFindings.length ? 'inline-flex' : 'none';
+  document.getElementById('btnExportJson').style.display = allFindings.length ? 'inline-flex' : 'none';
+  document.getElementById('btnPrintReport').style.display = 'inline-flex';
+
+  const counts = severityCounts();
+  const total = allFindings.length;
+  const masvsTagged = allFindings.filter(f=>f.masvs).length;
+  const masvsCoverage = total ? Math.round(masvsTagged / total * 100) : 0;
+
+  // risk meter
+  const riskWrap = document.getElementById('riskMeterWrap');
+  riskWrap.style.display = 'block';
+  const bar = document.getElementById('riskBar');
+  bar.innerHTML = '';
+  if (total === 0){
+    bar.innerHTML = `<span style="width:100%;background:${SEV_COLOR.low}"></span>`;
+  } else {
+    SEV_ORDER.forEach(s=>{
+      if (counts[s]){
+        const pct = (counts[s]/total*100).toFixed(2);
+        bar.innerHTML += `<span style="width:${pct}%;background:${SEV_COLOR[s]}" title="${SEV_LABEL[s]}: ${counts[s]}"></span>`;
+      }
+    });
+  }
+  const label = counts.critical ? 'High risk — critical issues found' : counts.high ? 'Elevated risk' : counts.medium ? 'Moderate risk' : total ? 'Low risk' : 'No issues found';
+  document.getElementById('riskLabel').textContent = label;
+  document.getElementById('riskCount').textContent = total + ' finding' + (total===1?'':'s') + ' · ' + scannedFileCount + ' files scanned';
+
+  let html = '';
+  html += `<div class="dash-grid">
+    <div class="stat-card total"><div class="num">${total}</div><div class="lbl">Total issues</div></div>
+    <div class="stat-card crit"><div class="num">${counts.critical}</div><div class="lbl">Critical</div></div>
+    <div class="stat-card high"><div class="num">${counts.high}</div><div class="lbl">High</div></div>
+    <div class="stat-card med"><div class="num">${counts.medium}</div><div class="lbl">Medium</div></div>
+    <div class="stat-card low"><div class="num">${counts.low}</div><div class="lbl">Low</div></div>
+    <div class="stat-card coverage"><div class="num">${masvsCoverage}%</div><div class="lbl">MASVS coverage</div></div>
+  </div>`;
+
+  html += `<div class="net-disclaimer" style="margin-bottom:18px;font-size:11.5px;">
+    Findings below are tagged against <b>OWASP Top 10:2025</b> (web) and <b>OWASP MASVS v2.1</b> (mobile) — the current published editions as of this scan. These tags are hardcoded and won't update on their own if OWASP publishes a newer edition later. MASVS v2.1 categories used here generally correspond to <b>OWASP Mobile Top 10 (2024)</b> risks as follows — a general orientation, not an OWASP-published rule-level mapping: STORAGE↔M9 Insecure Data Storage, CRYPTO↔M10 Insufficient Cryptography, AUTH↔M3 Insecure Authentication/Authorization, NETWORK↔M5 Insecure Communication, PLATFORM/CODE↔M4 Insufficient Input/Output Validation &amp; M8 Security Misconfiguration, RESILIENCE↔M7 Insufficient Binary Protections. M1 (credential usage) and M2 (supply chain) cut across several categories above rather than mapping to one.
+  </div>`;
+
+  html += `<div class="toolbar">
+    <div class="filters" id="filterBar">
+      ${['all','critical','high','medium','low','info'].map(s=>`<button class="filter-btn ${activeFilter===s?'active':''}" data-filter="${s}">${s==='all'?'All':SEV_LABEL[s]}</button>`).join('')}
+    </div>
+    <input class="search-box" id="searchBox" placeholder="Filter by file, title, MASVS id…" value="${searchTerm.replace(/"/g,'')}">
+  </div>`;
+
+  if (total === 0){
+    html += `<div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12l2 2 4-4M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4z"/></svg>
+      <div>No pattern-matched issues found in the scanned files.</div>
+    </div>`;
+  } else {
+    const filtered = allFindings.filter(f=>{
+      if (activeFilter !== 'all' && f.severity !== activeFilter) return false;
+      if (searchTerm){
+        const hay = (f.file+' '+f.title+' '+(f.masvs||'')+' '+(f.owasp||'')).toLowerCase();
+        if (!hay.includes(searchTerm.toLowerCase())) return false;
+      }
+      return true;
+    });
+    const byFile = {};
+    filtered.forEach(f=>{
+      (byFile[f.file] = byFile[f.file] || []).push(f);
+    });
+    const sevRank = { critical:0, high:1, medium:2, low:3, info:4 };
+    const files = Object.keys(byFile).sort((a,b)=>{
+      const ma = Math.min(...byFile[a].map(f=>sevRank[f.severity]));
+      const mb = Math.min(...byFile[b].map(f=>sevRank[f.severity]));
+      return ma - mb;
+    });
+
+    html += `<div class="section-title">Findings by file (${filtered.length})</div>`;
+    files.forEach((file, gi)=>{
+      const list = byFile[file].sort((a,b)=>sevRank[a.severity]-sevRank[b.severity]);
+      html += `<div class="file-group">
+        <div class="file-group-head" data-toggle="grp${gi}">
+          <span class="fname">${escapeHtml(file)}</span>
+          <span class="fcount">${list.length} finding${list.length===1?'':'s'}</span>
+        </div>
+        <div class="file-group-body ${gi===0?'open':''}" id="grp${gi}">`;
+      list.forEach(f=>{
+        html += `<div class="finding">
+          <div class="finding-head">
+            <div class="finding-title">${escapeHtml(f.title)}</div>
+            <span class="sev-chip sev-${f.severity}">${SEV_LABEL[f.severity]}</span>
+          </div>
+          <div class="finding-meta">
+            ${f.line ? `<span class="tag">Line ${f.line}</span>` : ''}
+            ${f.masvs ? `<span class="tag">${f.masvs}</span>` : ''}
+            ${f.maswe ? `<span class="tag">${f.maswe}</span>` : ''}
+            ${f.owasp ? `<span class="tag">${f.owasp}</span>` : ''}
+          </div>
+          <div class="finding-desc">${escapeHtml(f.description)}</div>
+          ${f.snippet ? `<div class="snippet">${f.line?`<span class="ln">${f.line}</span>`:''}${escapeHtml(f.snippet)}</div>` : ''}
+          <div class="finding-rec"><b>Recommendation —</b> ${escapeHtml(f.recommendation)}</div>
+        </div>`;
+      });
+      html += `</div></div>`;
+    });
+  }
+
+  root.innerHTML = html;
+  renderOwaspMapping();
+
+  document.getElementById('filterBar').addEventListener('click', e=>{
+    const btn = e.target.closest('.filter-btn');
+    if (!btn) return;
+    activeFilter = btn.dataset.filter;
+    renderResults();
+  });
+  document.getElementById('searchBox').addEventListener('input', e=>{
+    searchTerm = e.target.value;
+    renderResults();
+  });
+  root.querySelectorAll('.file-group-head').forEach(h=>{
+    h.addEventListener('click', ()=>{
+      document.getElementById(h.dataset.toggle).classList.toggle('open');
+    });
+  });
+}
+
+function escapeHtml(s){
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* =======================================================================
+   PDF export
+   =======================================================================*/
+function exportPdf(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const counts = severityCounts();
+  const total = allFindings.length;
+  const pageW = doc.internal.pageSize.getWidth();
+
+  // Cover
+  doc.setFillColor(10,14,19);
+  doc.rect(0,0,pageW,842,'F');
+  doc.setTextColor(230,237,243);
+  doc.setFont('helvetica','bold'); doc.setFontSize(26);
+  doc.text('AegisPulse SAST Security Review', 48, 110);
+  doc.setFont('helvetica','normal'); doc.setFontSize(12);
+  doc.setTextColor(139,152,165);
+  doc.text('Mobile (OWASP MASVS v2.1) + Web (OWASP Top 10:2025) Application Source Code Review', 48, 132);
+  doc.setFontSize(11);
+  doc.text('Project: ' + projectLabel, 48, 170);
+  doc.text('Generated: ' + new Date().toString(), 48, 188);
+  doc.text('Files scanned: ' + scannedFileCount, 48, 206);
+  doc.text('Total findings: ' + total, 48, 224);
+
+  const sevBoxes = [['Critical',counts.critical,'#ff4757'],['High',counts.high,'#ff8a3d'],['Medium',counts.medium,'#ffd166'],['Low',counts.low,'#4ecdc4'],['Info',counts.info,'#6c7a89']];
+  let bx = 48;
+  sevBoxes.forEach(([label,num,hex])=>{
+    const rgb = hexToRgb(hex);
+    doc.setFillColor(rgb.r,rgb.g,rgb.b);
+    doc.roundedRect(bx, 250, 88, 60, 6, 6, 'F');
+    doc.setTextColor(10,14,19); doc.setFont('helvetica','bold'); doc.setFontSize(20);
+    doc.text(String(num), bx+12, 282);
+    doc.setFontSize(9); doc.setFont('helvetica','normal');
+    doc.text(label, bx+12, 298);
+    bx += 98;
+  });
+
+  doc.setTextColor(91,152,255); doc.setFontSize(10);
+  doc.text('Regex/heuristic-based static analysis — verify findings manually and complement with dynamic testing.', 48, 780);
+
+  // Findings tables, grouped by severity
+  SEV_ORDER.forEach(sev=>{
+    const items = allFindings.filter(f=>f.severity===sev);
+    if (!items.length) return;
+    doc.addPage();
+    doc.setTextColor(20,20,20); doc.setFont('helvetica','bold'); doc.setFontSize(16);
+    doc.text(SEV_LABEL[sev] + ' severity findings (' + items.length + ')', 40, 40);
+    const rows = items.map(f=>[
+      f.title,
+      f.file + (f.line ? (':' + f.line) : ''),
+      f.masvs || '',
+      (f.description||'').slice(0,220),
+      (f.recommendation||'').slice(0,220)
+    ]);
+    doc.autoTable({
+      startY: 55,
+      head: [['Finding','Location','MASVS','Description','Recommendation']],
+      body: rows,
+      styles:{ fontSize:8, cellPadding:5, overflow:'linebreak' },
+      headStyles:{ fillColor: hexToRgbArr(SEV_COLOR[sev]) },
+      columnStyles:{ 0:{cellWidth:85}, 1:{cellWidth:80}, 2:{cellWidth:65}, 3:{cellWidth:150}, 4:{cellWidth:150} },
+      margin:{left:40,right:40}
+    });
+  });
+
+  doc.save('aegispulse-sast-report-' + Date.now() + '.pdf');
+}
+function hexToRgb(hex){
+  const m = hex.replace('#','');
+  return { r: parseInt(m.slice(0,2),16), g: parseInt(m.slice(2,4),16), b: parseInt(m.slice(4,6),16) };
+}
+function hexToRgbArr(hex){ const c = hexToRgb(hex); return [c.r,c.g,c.b]; }
+
+function exportJson(){
+  const payload = {
+    product: 'AegisPulse SAST',
+    generatedAt: new Date().toISOString(),
+    project: projectLabel,
+    filesScanned: scannedFileCount,
+    totalFindings: allFindings.length,
+    severityCounts: severityCounts(),
+    warnings: scanWarnings,
+    findings: allFindings
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `aegispulse-sast-${Date.now()}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(()=>URL.revokeObjectURL(link.href), 0);
+  showToast('JSON report downloaded');
+}
+
+/* =======================================================================
+   UI wiring
+   =======================================================================*/
+const dropzone = document.getElementById('dropzone');
+const fileInputMulti = document.getElementById('fileInputMulti');
+
+document.getElementById('btnPickFiles').addEventListener('click', ()=>fileInputMulti.click());
+fileInputMulti.addEventListener('change', e=>{ if (e.target.files.length) runScan(Array.from(e.target.files)); });
+
+['dragenter','dragover'].forEach(evt=>{
+  dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+});
+['dragleave','drop'].forEach(evt=>{
+  dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.remove('drag'); });
+});
+dropzone.addEventListener('drop', e=>{
+  const files = [];
+  const items = e.dataTransfer.items;
+  if (items && items.length && items[0].webkitGetAsEntry){
+    let pending = 0, done = false;
+    const collected = [];
+    function walk(entry, path){
+      if (entry.isFile){
+        pending++;
+        entry.file(f=>{
+          Object.defineProperty(f, 'webkitRelativePath', { value: path + f.name });
+          collected.push(f);
+          pending--;
+          if (pending===0 && done) runScan(collected);
+        });
+      } else if (entry.isDirectory){
+        pending++;
+        const reader = entry.createReader();
+        reader.readEntries(entries=>{
+          entries.forEach(en=>walk(en, path+entry.name+'/'));
+          pending--;
+          if (pending===0 && done) runScan(collected);
+        });
+      }
+    }
+    for (let i=0;i<items.length;i++){
+      const entry = items[i].webkitGetAsEntry();
+      if (entry) walk(entry, '');
+    }
+    done = true;
+    if (pending===0) runScan(collected);
+  } else if (e.dataTransfer.files.length){
+    runScan(Array.from(e.dataTransfer.files));
+  }
+});
+
+document.getElementById('btnExportPdf').addEventListener('click', ()=>{
+  exportPdf();
+  showToast('PDF report downloaded');
+});
+document.getElementById('btnExportJson').addEventListener('click', exportJson);
+document.getElementById('btnPrintReport').addEventListener('click', ()=>window.print());
+document.getElementById('btnNewScan').addEventListener('click', resetScan);
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.innerHTML = '<span class="dot"></span>' + msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>t.classList.remove('show'), 3200);
+}
+
+function resetScan(){
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('riskMeterWrap').style.display = 'none';
+  document.getElementById('btnNewScan').style.display = 'none';
+  document.getElementById('btnExportJson').style.display = 'none';
+  document.getElementById('btnPrintReport').style.display = 'none';
+  document.getElementById('btnExportPdf').style.display = 'none';
+  document.getElementById('dropzoneWrap').style.display = 'block';
+  fileInputMulti.value = '';
+  allFindings = [];
+  findingSeq = 0;
+  scannedFileCount = 0;
+  scanWarnings = [];
+  activeFilter = 'all';
+  searchTerm = '';
+  renderOwaspMapping();
+}
+
+/* =======================================================================
+   Top-level tab switching
+   =======================================================================*/
+document.getElementById('mainTabs').addEventListener('click', e=>{
+  const btn = e.target.closest('.main-tab-btn');
+  if (!btn) return;
+  document.querySelectorAll('.main-tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const target = btn.dataset.tab;
+  document.getElementById('tabPanelScanner').classList.toggle('active', target==='scanner');
+  document.getElementById('tabPanelNetwork').classList.toggle('active', target==='network');
+  document.getElementById('tabPanelOwasp').classList.toggle('active', target==='owasp');
+});
+
+/* =======================================================================
+   MODULE 3 — Online Website & Network Analyzer
+   Real part: DNS-over-HTTPS resolution (A, AAAA, TXT, MX, NS, CAA) via
+   public Cloudflare/Google resolvers, reached directly from the browser.
+   Everything downstream of DNS (ports, TLS, headers/CSP) cannot be
+   observed from a browser due to CORS / no raw sockets, so it is modeled
+   with a transparent, clearly-labeled heuristic baseline profile keyed
+   off the hosting signals we *can* legitimately observe (nameservers,
+   TXT records, IP ranges of well-known providers).
+   =======================================================================*/
+const HOSTING_PROFILES = [
+  { match:/cloudflare/i, name:'Cloudflare', csp:true, hsts:true, tlsGrade:'A', server:'cloudflare', notes:'Cloudflare typically terminates TLS at the edge with modern cipher suites and auto-HTTPS; origin-side headers vary by customer configuration.' },
+  { match:/amazonaws|cloudfront/i, name:'AWS (CloudFront/EC2)', csp:false, hsts:false, tlsGrade:'B', server:'CloudFront / nginx', notes:'AWS-hosted origins vary widely — security headers depend entirely on the application/CDN configuration, not the platform default.' },
+  { match:/googleusercontent|google/i, name:'Google Infrastructure', csp:true, hsts:true, tlsGrade:'A', server:'gws / ESF', notes:'Google-operated properties generally enforce HSTS and modern TLS by default.' },
+  { match:/azure|microsoft/i, name:'Microsoft Azure', csp:false, hsts:true, tlsGrade:'B', server:'Microsoft-IIS / Azure Front Door', notes:'Azure-hosted apps commonly enable HSTS via Front Door but CSP is application-defined.' },
+  { match:/github/i, name:'GitHub Pages/Fastly', csp:false, hsts:true, tlsGrade:'A', server:'GitHub.com / Fastly', notes:'GitHub Pages enforces HTTPS and HSTS by default; CSP is left to the site author.' },
+  { match:/fastly/i, name:'Fastly CDN', csp:false, hsts:true, tlsGrade:'A', server:'Fastly', notes:'Fastly edge typically supports modern TLS; header policy is customer-configured.' },
+];
+function guessHostingProfile(ns, txt){
+  const hay = (ns.join(' ') + ' ' + txt.join(' ')).toLowerCase();
+  for (const p of HOSTING_PROFILES){ if (p.match.test(hay)) return p; }
+  return { name:'Generic / Unidentified Origin', csp:false, hsts:false, tlsGrade:'C', server:'Unknown', notes:'No recognized hosting/CDN signature in DNS records — treat header and TLS posture as unverified until confirmed with a direct scan.' };
+}
+
+async function dohQuery(domain, type){
+  // Try Cloudflare first, fall back to Google — both public DoH JSON APIs.
+  const endpoints = [
+    `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${type}`,
+    `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`
+  ];
+  for (const url of endpoints){
+    try {
+      const res = await fetch(url, { headers:{ 'Accept':'application/dns-json' } });
+      if (!res.ok) continue;
+      const data = await res.json();
+      return data;
+    } catch(e){ /* try next resolver */ }
+  }
+  return null;
+}
+
+function extractHost(input){
+  let s = input.trim();
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  try {
+    const u = new URL(s);
+    return { host: u.hostname, scheme: u.protocol.replace(':',''), original: s };
+  } catch(e){ return null; }
+}
+
+function netStatusPill(ok, warnText, okText, badText){
+  if (ok === true) return `<span class="net-status-pill ok">${okText||'OK'}</span>`;
+  if (ok === false) return `<span class="net-status-pill bad">${badText||'Missing'}</span>`;
+  return `<span class="net-status-pill warn">${warnText||'Unknown'}</span>`;
+}
+
+async function runNetworkScan(rawInput){
+  const netResults = document.getElementById('netResults');
+  const parsed = extractHost(rawInput);
+  if (!parsed){
+    netResults.innerHTML = `<div class="net-disclaimer" style="border-color:var(--crit);color:var(--crit);">Enter a valid URL, e.g. https://example.com</div>`;
+    return;
+  }
+  netResults.innerHTML = `<div class="net-loading"><span class="spinner"></span> Resolving ${escapeHtml(parsed.host)} via public DNS-over-HTTPS and attempting a live header/CSP fetch…</div>`;
+
+  const [aRec, aaaaRec, txtRec, nsRec, mxRec, caaRec] = await Promise.all([
+    dohQuery(parsed.host, 'A'),
+    dohQuery(parsed.host, 'AAAA'),
+    dohQuery(parsed.host, 'TXT'),
+    dohQuery(parsed.host, 'NS'),
+    dohQuery(parsed.host, 'MX'),
+    dohQuery(parsed.host, 'CAA'),
+  ]);
+
+  const aAnswers = (aRec && aRec.Answer) ? aRec.Answer.filter(a=>a.type===1).map(a=>a.data) : [];
+  const aaaaAnswers = (aaaaRec && aaaaRec.Answer) ? aaaaRec.Answer.filter(a=>a.type===28).map(a=>a.data) : [];
+  const txtAnswers = (txtRec && txtRec.Answer) ? txtRec.Answer.map(a=>a.data.replace(/^"|"$/g,'')) : [];
+  const nsAnswers = (nsRec && nsRec.Answer) ? nsRec.Answer.map(a=>a.data) : [];
+  const mxAnswers = (mxRec && mxRec.Answer) ? mxRec.Answer.map(a=>a.data) : [];
+  const caaAnswers = (caaRec && caaRec.Answer) ? caaRec.Answer.map(a=>a.data) : [];
+
+  if (aAnswers.length === 0 && aaaaAnswers.length === 0){
+    netResults.innerHTML = `<div class="net-disclaimer" style="border-color:var(--crit);color:var(--crit);">
+      Could not resolve ${escapeHtml(parsed.host)} via public DNS. The domain may not exist, or the DoH resolvers may be unreachable from this network.
+    </div>`;
+    return;
+  }
+
+  const profile = guessHostingProfile(nsAnswers, txtAnswers);
+  const usesHttps = parsed.scheme === 'https';
+
+  // Best-effort LIVE header/CSP check. This is a real fetch, not a simulation —
+  // but browsers only let JS read a response's security headers cross-origin
+  // when the target explicitly opts in via CORS (Access-Control-Expose-Headers).
+  // Most sites don't, so liveHeaders will legitimately come back empty for them;
+  // that's reported honestly rather than papered over.
+  let liveHeaders = null;
+  let liveFetchFailed = false;
+  try {
+    const resp = await fetch(parsed.original, { mode: 'cors', cache: 'no-store', redirect: 'follow' });
+    liveHeaders = {
+      csp: resp.headers.get('content-security-policy') || resp.headers.get('content-security-policy-report-only'),
+      hsts: resp.headers.get('strict-transport-security'),
+      xfo: resp.headers.get('x-frame-options'),
+      xcto: resp.headers.get('x-content-type-options'),
+      server: resp.headers.get('server'),
+    };
+  } catch(e){
+    liveFetchFailed = true;
+  }
+  const liveReadable = !!(liveHeaders && (liveHeaders.csp || liveHeaders.hsts || liveHeaders.xfo || liveHeaders.xcto || liveHeaders.server));
+
+  // Common legacy/open ports heuristic matrix (structural — not a live scan)
+  const portMatrix = [
+    { port:80,  label:'HTTP',  open: true },
+    { port:443, label:'HTTPS', open: true },
+    { port:21,  label:'FTP',   open: false },
+    { port:22,  label:'SSH',   open: false },
+    { port:23,  label:'Telnet',open: false },
+    { port:8080,label:'Alt-HTTP', open: /amazonaws|azure/.test(profile.name.toLowerCase()) },
+  ];
+
+  let html = '';
+
+  html += `<div class="net-grid">
+    <div class="net-card">
+      <h4>🌐 DNS Resolution</h4>
+      <div class="kv"><span class="k">Hostname</span><span class="v">${escapeHtml(parsed.host)}</span></div>
+      <div class="kv"><span class="k">A record(s)</span><span class="v">${aAnswers.length ? escapeHtml(aAnswers.join(', ')) : '—'}</span></div>
+      <div class="kv"><span class="k">AAAA record(s)</span><span class="v">${aaaaAnswers.length ? escapeHtml(aaaaAnswers.slice(0,2).join(', ')) : '—'}</span></div>
+      <div class="kv"><span class="k">Nameservers</span><span class="v">${nsAnswers.length ? escapeHtml(nsAnswers.slice(0,2).join(', ')) : '—'}</span></div>
+      <div class="kv"><span class="k">MX</span><span class="v">${mxAnswers.length ? escapeHtml(mxAnswers.slice(0,1).join(', ')) : '—'}</span></div>
+    </div>
+
+    <div class="net-card">
+      <h4>🔒 TLS / Certificate (heuristic)</h4>
+      <div class="kv"><span class="k">Scheme requested</span><span class="v">${netStatusPill(usesHttps, 'HTTP', 'HTTPS', 'HTTP only')}</span></div>
+      <div class="kv"><span class="k">Detected platform</span><span class="v">${escapeHtml(profile.name)}</span></div>
+      <div class="kv"><span class="k">Est. TLS grade</span><span class="v">${escapeHtml(profile.tlsGrade)}</span></div>
+      <div class="kv"><span class="k">CAA record present</span><span class="v">${netStatusPill(caaAnswers.length>0)}</span></div>
+      <div class="kv"><span class="k">Server (inferred)</span><span class="v">${escapeHtml(profile.server)}</span></div>
+    </div>
+
+    <div class="net-card">
+      <h4>🛡️ Header Baseline ${liveReadable ? '(live)' : '(heuristic)'}</h4>
+      <div class="kv"><span class="k">HSTS</span><span class="v">${liveReadable ? netStatusPill(!!liveHeaders.hsts) : netStatusPill(profile.hsts, 'Est.')}</span></div>
+      <div class="kv"><span class="k">CSP</span><span class="v">${liveReadable ? netStatusPill(!!liveHeaders.csp) : netStatusPill(profile.csp, 'Est.')}</span></div>
+      <div class="kv"><span class="k">X-Frame-Options</span><span class="v">${liveReadable ? netStatusPill(!!liveHeaders.xfo) : netStatusPill(profile.hsts, 'Unverified')}</span></div>
+      <div class="kv"><span class="k">SPF (TXT)</span><span class="v">${netStatusPill(txtAnswers.some(t=>/^v=spf1/i.test(t)))}</span></div>
+      <div class="kv"><span class="k">DMARC likely</span><span class="v">${netStatusPill(mxAnswers.length>0, 'Not checked')}</span></div>
+    </div>
+  </div>`;
+
+  // Dedicated CSP audit — real, from a live fetch when the browser can read it;
+  // otherwise an honest explanation instead of a fabricated result.
+  html += `<div class="section-title">CSP audit</div>`;
+  if (liveHeaders && liveHeaders.csp){
+    const ast = parseCSP(liveHeaders.csp);
+    const cspFlags = auditCSP(ast);
+    html += `<div class="net-card" style="margin-bottom:14px;"><h4>📜 Live CSP directives</h4>`;
+    Object.keys(ast).forEach(dir=>{
+      html += `<div class="csp-directive-row">
+        <div class="csp-directive-name">${escapeHtml(dir)}</div>
+        <div class="csp-directive-values">${ast[dir].length ? escapeHtml(ast[dir].join(' ')) : '<i>(no value)</i>'}</div>
+      </div>`;
+    });
+    html += `</div>`;
+    if (!cspFlags.length){
+      html += `<div class="empty-state" style="padding:20px 0;">No issues flagged in the live CSP (${cspFlags.length} findings).</div>`;
+    } else {
+      cspFlags.forEach(f=>{
+        html += `<div class="finding" style="border:1px solid var(--border-soft);border-radius:10px;margin-bottom:10px;">
+          <div class="finding-head">
+            <div class="finding-title">${escapeHtml(f.text.split(' — ')[0].split(', permitting')[0].split(', which')[0].slice(0,90))}</div>
+            <span class="sev-chip sev-${sevBadgeClass(f.sev)}">${SEV_LABEL[sevBadgeClass(f.sev)]}</span>
+          </div>
+          <div class="finding-desc">${escapeHtml(f.text)}</div>
+        </div>`;
+      });
+    }
+  } else {
+    html += `<div class="net-disclaimer" style="border-color:var(--med);color:var(--med);">
+      ${liveFetchFailed ? `The live request to ${escapeHtml(parsed.host)} failed outright (network error or the request was blocked before headers were returned).` : `${escapeHtml(parsed.host)} responded, but didn't opt in to exposing its Content-Security-Policy header to cross-origin JavaScript (via Access-Control-Expose-Headers) — that's a browser sandbox restriction most sites don't lift, not a bug here. No CSP result is fabricated for a header the browser wasn't allowed to read.`}
+      To audit it anyway: open DevTools → Network tab → click the document request → Response Headers, copy the content-security-policy line, and check it at <a href="https://csp-evaluator.withgoogle.com/" target="_blank" rel="noopener" style="color:var(--accent);">Google's CSP Evaluator</a>.
+    </div>`;
+  }
+
+  html += `<div class="net-card" style="margin-bottom:22px;">
+    <h4>🔌 Common Port Matrix (structural baseline, not a live scan)</h4>
+    <div class="port-matrix">
+      ${portMatrix.map(p=>`<div class="port-chip ${p.open?'open':'closed'}">
+        <span class="pnum">${p.port}</span><span class="plabel">${escapeHtml(p.label)}</span>
+      </div>`).join('')}
+    </div>
+  </div>`;
+
+  const flags = [];
+  if (!usesHttps) flags.push({ sev:'critical', text:'Site was requested over plain HTTP — traffic is unencrypted end to end unless the server forces a redirect to HTTPS.' });
+  if (liveReadable){
+    if (!liveHeaders.hsts) flags.push({ sev:'high', text:'Live response had no Strict-Transport-Security header — the browser will accept a downgrade to plain HTTP on future visits.' });
+    if (!liveHeaders.xfo && !(liveHeaders.csp && /frame-ancestors/.test(liveHeaders.csp))) flags.push({ sev:'medium', text:'Live response had no X-Frame-Options header and no CSP frame-ancestors directive — no clickjacking protection detected.' });
+    if (!liveHeaders.xcto) flags.push({ sev:'low', text:'Live response had no X-Content-Type-Options header — browsers may MIME-sniff responses, enabling certain content-type confusion attacks.' });
+    if (liveHeaders.server) flags.push({ sev:'low', text:`Server header discloses "${liveHeaders.server}" — verbose server/version banners can aid an attacker in fingerprinting known vulnerabilities.` });
+  } else {
+    if (!profile.hsts) flags.push({ sev:'high', text:'HSTS is not a known default for this hosting profile (unverified — the live header could not be read) — confirm the Strict-Transport-Security header is explicitly set to prevent SSL-stripping downgrade attacks.' });
+  }
+  if (portMatrix.find(p=>p.port===21&&p.open) || portMatrix.find(p=>p.port===23&&p.open)) flags.push({ sev:'critical', text:'Legacy cleartext protocol ports (FTP/Telnet) flagged as potentially open for this profile — these should be disabled in favor of SFTP/SSH.' });
+  if (caaAnswers.length===0) flags.push({ sev:'low', text:'No CAA record found — any publicly trusted CA can currently issue certificates for this domain; a CAA record restricts issuance to authorized CAs.' });
+  if (!txtAnswers.some(t=>/^v=spf1/i.test(t))) flags.push({ sev:'low', text:'No SPF record found in TXT — this can make the domain easier to spoof in phishing emails.' });
+
+  html += `<div class="section-title">Risk flags (${flags.length})</div>`;
+  if (!flags.length){
+    html += `<div class="empty-state" style="padding:30px 0;">No baseline risk flags for this profile.</div>`;
+  } else {
+    flags.forEach(f=>{
+      html += `<div class="finding" style="border-top:none;border:1px solid var(--border-soft);border-radius:10px;margin-bottom:10px;">
+        <div class="finding-head">
+          <div class="finding-title">${escapeHtml(f.text.split(' — ')[0])}</div>
+          <span class="sev-chip sev-${f.sev}">${SEV_LABEL[f.sev]}</span>
+        </div>
+        <div class="finding-desc">${escapeHtml(f.text)}</div>
+      </div>`;
+    });
+  }
+
+  html += `<div class="net-disclaimer">
+    <b>${escapeHtml(profile.name)}</b> — ${escapeHtml(profile.notes)} DNS data above (A/AAAA/NS/MX/TXT/CAA) was retrieved live via public DoH resolvers. TLS grade, header defaults, and the port matrix are heuristic profile inferences, not observed live from this domain — browser CORS/security policy prevents reading raw response headers or opening arbitrary TCP sockets from client-side JavaScript. For authoritative results, pair this with a server-side scanner.
+  </div>`;
+
+  netResults.innerHTML = html;
+}
+
+document.getElementById('btnNetScan').addEventListener('click', ()=>{
+  const val = document.getElementById('netUrlInput').value;
+  if (val.trim()) runNetworkScan(val);
+});
+document.getElementById('netUrlInput').addEventListener('keydown', e=>{
+  if (e.key === 'Enter') document.getElementById('btnNetScan').click();
+});
+document.querySelectorAll('.net-examples .chip').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.getElementById('netUrlInput').value = chip.dataset.example;
+    runNetworkScan(chip.dataset.example);
+  });
+});
+
+/* =======================================================================
+   CSP Abstract Syntax Tree parser + header audit
+   Runs on headers actually read from a live fetch — see runNetworkScan()
+   above, which is the only place CSP data can legitimately come from,
+   since the browser only exposes it when the target opts in via CORS.
+   =======================================================================*/
+function parseCSP(cspString){
+  // Tokenizes a CSP header value into { directive: [values...] } — a
+  // straightforward, dependency-free AST: each directive is a node with
+  // an ordered list of source-expression leaves.
+  const ast = {};
+  const parts = cspString.split(';').map(p=>p.trim()).filter(Boolean);
+  parts.forEach(part=>{
+    const tokens = part.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return;
+    const directive = tokens[0].toLowerCase();
+    const values = tokens.slice(1);
+    ast[directive] = values;
+  });
+  return ast;
+}
+
+function auditCSP(ast){
+  const flags = [];
+  const directives = Object.keys(ast);
+
+  function has(dir){ return Object.prototype.hasOwnProperty.call(ast, dir); }
+  function values(dir){ return ast[dir] || []; }
+
+  // default-src presence
+  if (!has('default-src')){
+    flags.push({ sev:'med', text:'No default-src directive — directives not explicitly set will fall back to allowing everything, weakening the overall policy.' });
+  }
+
+  // dangerous keywords across all directives
+  directives.forEach(dir=>{
+    const vals = values(dir);
+    if (vals.includes("'unsafe-inline'") && /script-src|default-src/.test(dir)){
+      flags.push({ sev:'crit', text:`'unsafe-inline' in ${dir} allows inline <script> execution, largely defeating CSP's core XSS mitigation for this directive.` });
+    }
+    if (vals.includes("'unsafe-inline'") && dir==='style-src'){
+      flags.push({ sev:'high', text:`'unsafe-inline' in style-src permits inline style injection, which can be abused for data exfiltration or UI redressing.` });
+    }
+    if (vals.includes("'unsafe-eval'")){
+      flags.push({ sev:'crit', text:`'unsafe-eval' in ${dir} permits eval()/Function()-style dynamic code execution, a common XSS escalation path.` });
+    }
+    if (vals.some(v => v==='*' || v==='http:' || v==='https:')){
+      flags.push({ sev:'high', text:`${dir} allows a broad wildcard/scheme source (${vals.find(v=>v==='*'||v==='http:'||v==='https:')}), permitting content from effectively any origin.` });
+    }
+    if (vals.some(v=>/^\*\./.test(v))){
+      flags.push({ sev:'med', text:`${dir} allows a wildcard subdomain source (${vals.find(v=>/^\*\./.test(v))}) — any subdomain of that origin, including ones an attacker could take over, would be trusted.` });
+    }
+  });
+
+  // object-src
+  if (!has('object-src') && !(has('default-src') && values('default-src').includes("'none'"))){
+    flags.push({ sev:'high', text:'No object-src restriction (and default-src does not fall back to \'none\') — <object>/<embed>/<applet> plugin content is not explicitly locked down.' });
+  }
+
+  // base-uri
+  if (!has('base-uri')){
+    flags.push({ sev:'med', text:'No base-uri directive — an attacker who achieves injection could rewrite the page\'s <base> tag to redirect relative URLs to an attacker-controlled origin.' });
+  }
+
+  // frame-ancestors
+  if (!has('frame-ancestors')){
+    flags.push({ sev:'med', text:'No frame-ancestors directive — the page has no CSP-level protection against being embedded in a clickjacking iframe (check X-Frame-Options as a fallback).' });
+  } else if (values('frame-ancestors').includes('*')){
+    flags.push({ sev:'high', text:"frame-ancestors '*' allows the page to be framed by any site, defeating clickjacking protection." });
+  }
+
+  if (!directives.length){
+    flags.push({ sev:'crit', text:'CSP header is empty or unparsable — no content restriction is in effect.' });
+  }
+
+  return flags;
+}
+
+function sevBadgeClass(s){ return s==='crit' ? 'critical' : s==='high' ? 'high' : s==='med' ? 'medium' : 'low'; }
+
+function parseResponseHeaders(raw){
+  const headers = {};
+  raw.split(/\r?\n/).forEach(line=>{
+    const match = line.match(/^\s*([^:#]+)\s*:\s*(.*)$/);
+    if (!match) return;
+    const key = match[1].trim().toLowerCase();
+    headers[key] = headers[key] ? `${headers[key]}, ${match[2].trim()}` : match[2].trim();
+  });
+  return headers;
+}
+
+function auditResponseHeaders(raw, requestedOrigin){
+  const h = parseResponseHeaders(raw);
+  const flags = [];
+  const origin = (h['access-control-allow-origin'] || '').trim();
+  const credentials = (h['access-control-allow-credentials'] || '').trim().toLowerCase() === 'true';
+  const vary = (h['vary'] || '').toLowerCase();
+  const corsOrigin = requestedOrigin.trim();
+
+  if (!origin) flags.push({ sev:'med', text:'No Access-Control-Allow-Origin header was observed — cross-origin browser requests will be blocked unless same-origin or otherwise permitted.' });
+  if (origin === '*' && credentials) flags.push({ sev:'crit', text:'CORS allows every origin while credentials are enabled — browsers reject this combination, and server-side handling may still create an unsafe trust boundary.' });
+  if (origin === '*' && !credentials) flags.push({ sev:'high', text:'CORS allows every origin — verify that the response contains no sensitive data intended only for trusted callers.' });
+  if (corsOrigin && origin && origin !== '*' && origin !== corsOrigin) flags.push({ sev:'high', text:`The pasted CORS policy does not allow the requested origin ${corsOrigin}.` });
+  if (origin !== '*' && origin && !vary.includes('origin')) flags.push({ sev:'med', text:'A specific origin is reflected/allowed without Vary: Origin — a shared cache could serve one origin’s CORS response to another.' });
+
+  const hsts = h['strict-transport-security'] || '';
+  if (!hsts) flags.push({ sev:'high', text:'Strict-Transport-Security is missing — browsers remain exposed to first-visit or downgrade attacks.' });
+  else if (!/max-age\s*=\s*(\d{6,})/i.test(hsts)) flags.push({ sev:'med', text:'HSTS max-age is absent or shorter than roughly 7 days — use a long-lived policy before considering preload.' });
+  const csp = h['content-security-policy'] || '';
+  if (!csp) flags.push({ sev:'high', text:'Content-Security-Policy is missing — no browser-enforced content source policy was observed.' });
+  else {
+    const cspLower = csp.toLowerCase();
+    if (cspLower.includes("'unsafe-inline'")) flags.push({ sev:'high', text:"Content-Security-Policy contains 'unsafe-inline' — inline script/style execution weakens injection protections." });
+    if (cspLower.includes("'unsafe-eval'")) flags.push({ sev:'high', text:"Content-Security-Policy contains 'unsafe-eval' — eval()-style dynamic code execution is permitted." });
+  }
+  if (!h['x-frame-options'] && !csp.toLowerCase().includes('frame-ancestors')) flags.push({ sev:'med', text:'No X-Frame-Options or CSP frame-ancestors directive was observed — clickjacking protection is not evident.' });
+  if ((h['x-frame-options'] || '').toLowerCase() === 'allowall') flags.push({ sev:'high', text:'X-Frame-Options is set to ALLOWALL, which provides no clickjacking protection.' });
+  if ((h['x-content-type-options'] || '').toLowerCase() !== 'nosniff') flags.push({ sev:'low', text:'X-Content-Type-Options: nosniff is missing — browsers may MIME-sniff responses.' });
+  if (!h['referrer-policy']) flags.push({ sev:'low', text:'Referrer-Policy is missing — URLs may disclose more path/query information than intended.' });
+  if (!h['permissions-policy']) flags.push({ sev:'low', text:'Permissions-Policy is missing — powerful browser features are not explicitly restricted.' });
+  if (/private|no-store/i.test(h['cache-control']) === false && /authorization|set-cookie/i.test(Object.keys(h).join(' '))) {
+    flags.push({ sev:'med', text:'Sensitive response signals are present but Cache-Control does not clearly include private or no-store — confirm authenticated content is not shared by caches.' });
+  }
+  return { headers:h, flags };
+}
+
+function renderHeaderAudit(){
+  const raw = document.getElementById('headerPasteInput').value;
+  const requestedOrigin = document.getElementById('corsOriginInput').value;
+  const root = document.getElementById('headerResults');
+  if (!raw.trim()){
+    root.innerHTML = `<div class="net-disclaimer" style="border-color:var(--crit);color:var(--crit);">Paste an HTTP response header block first.</div>`;
+    return;
+  }
+  const result = auditResponseHeaders(raw, requestedOrigin);
+  const ordered = Object.entries(result.headers).sort((a,b)=>a[0].localeCompare(b[0]));
+  root.innerHTML = `
+    <div class="net-card" style="margin-bottom:18px;">
+      <h4>Observed headers (${ordered.length})</h4>
+      ${ordered.map(([key,value])=>`<div class="kv"><span class="k">${escapeHtml(key)}</span><span class="v">${escapeHtml(value).slice(0,240)}</span></div>`).join('')}
+    </div>
+    <div class="section-title">Header / CORS findings (${result.flags.length})</div>
+    ${result.flags.length ? result.flags.map(f=>`<div class="finding" style="border:1px solid var(--border-soft);border-radius:10px;margin-bottom:10px;">
+      <div class="finding-head"><div class="finding-title">${escapeHtml(f.text.split(' — ')[0])}</div><span class="sev-chip sev-${sevBadgeClass(f.sev)}">${SEV_LABEL[sevBadgeClass(f.sev)]}</span></div>
+      <div class="finding-desc">${escapeHtml(f.text)}</div>
+    </div>`).join('') : '<div class="empty-state" style="padding:24px 0;">No issues flagged in the pasted header set.</div>'}`;
+}
+
+document.getElementById('btnAuditHeaders').addEventListener('click', renderHeaderAudit);
+
+/* =======================================================================
+   SSL certificate / TLS configuration — parsed from pasted SSL Labs JSON,
+   openssl output, or plain labeled lines. Nothing here is fetched by this
+   page; browsers give JS no API for TLS handshake / certificate details,
+   full stop, so all of it comes from what the user pasted in.
+   =======================================================================*/
+document.getElementById('btnOpenSslLabs').addEventListener('click', ()=>{
+  let host = (document.getElementById('sslDomainInput').value || document.getElementById('netUrlInput').value || '').trim();
+  host = host.replace(/^https?:\/\//i,'').replace(/\/.*$/,'');
+  if (!host){ showToast('Enter a domain first'); return; }
+  window.open('https://api.ssllabs.com/api/v3/analyze?host=' + encodeURIComponent(host) + '&all=on', '_blank');
+  showToast('If it says "DNS", "IN_PROGRESS" or similar, reload that tab a few times until endpoints/cert data appear, then copy the whole page');
+});
+
+function parseSslInput(raw){
+  const text = raw.trim();
+  const out = { subject:null, issuer:null, notBefore:null, notAfter:null, sans:[], sigAlg:null, keyAlg:null, keySize:null, protocols:[], ciphers:[], grade:null, selfSigned:null, source:'plain' };
+
+  // 1) SSL Labs API v3 JSON
+  if (text.startsWith('{')){
+    try {
+      const data = JSON.parse(text);
+      out.source = 'ssllabs-json';
+      const ep = (data.endpoints && data.endpoints[0]) || null;
+      if (ep){
+        out.grade = ep.grade || null;
+        const det = ep.details || {};
+        const cert = det.cert || (det.certChains && det.certChains[0] && det.certChains[0].certs && det.certChains[0].certs[0]) || null;
+        if (cert){
+          out.subject = cert.subject || null;
+          out.issuer = cert.issuerLabel || cert.issuerSubject || null;
+          out.notBefore = cert.notBefore ? new Date(cert.notBefore) : null;
+          out.notAfter = cert.notAfter ? new Date(cert.notAfter) : null;
+          out.sans = cert.altNames || [];
+          out.sigAlg = cert.sigAlg || null;
+          out.keyAlg = cert.keyAlg || null;
+          out.keySize = cert.keySize || null;
+        }
+        if (det.protocols) out.protocols = det.protocols.map(p => p.name + ' ' + p.version);
+        if (det.suites && det.suites.list) out.ciphers = det.suites.list.map(s => s.name);
+        else if (Array.isArray(det.suites)) det.suites.forEach(s => { if (s.list) out.ciphers.push(...s.list.map(x=>x.name)); });
+      }
+      return out;
+    } catch(e){
+      // fall through to text parsing if JSON.parse fails
+    }
+  }
+
+  // 2) openssl s_client / x509 style output
+  const opensslSubject = text.match(/^subject\s*=\s*(.+)$/im);
+  const opensslIssuer = text.match(/^issuer\s*=\s*(.+)$/im);
+  const opensslNotBefore = text.match(/notBefore\s*=\s*(.+)/i);
+  const opensslNotAfter = text.match(/notAfter\s*=\s*(.+)/i);
+  const opensslProtocol = text.match(/Protocol\s*[:=]\s*([\w.]+)/i);
+  const opensslCipher = text.match(/Cipher\s*[:=]\s*([\w-]+)/i);
+  if (opensslSubject || opensslIssuer || opensslNotBefore){
+    out.source = 'openssl';
+    if (opensslSubject) out.subject = opensslSubject[1].trim();
+    if (opensslIssuer) out.issuer = opensslIssuer[1].trim();
+    if (opensslNotBefore) out.notBefore = new Date(opensslNotBefore[1].trim());
+    if (opensslNotAfter) out.notAfter = new Date(opensslNotAfter[1].trim());
+    if (opensslProtocol) out.protocols = [opensslProtocol[1].trim()];
+    if (opensslCipher) out.ciphers = [opensslCipher[1].trim()];
+    const sanBlock = text.match(/X509v3 Subject Alternative Name:\s*\n\s*(.+)/i);
+    if (sanBlock) out.sans = sanBlock[1].split(',').map(s=>s.replace(/DNS:/i,'').trim());
+    return out;
+  }
+
+  // 3) Plain labeled lines (e.g. copied from a browser's certificate viewer)
+  const grab = (label) => {
+    const m = text.match(new RegExp('^\\s*(?:' + label + ')\\s*[:=]\\s*(.+)$', 'im'));
+    return m ? m[1].trim() : null;
+  };
+  out.subject = grab('Common Name|Subject');
+  out.issuer = grab('Issuer(?: Organization)?');
+  const vf = grab('Valid From|Not Before|Issued On');
+  const vt = grab('Valid To|Not After|Expires On');
+  if (vf) out.notBefore = new Date(vf);
+  if (vt) out.notAfter = new Date(vt);
+  const proto = grab('Protocol|TLS Version');
+  if (proto) out.protocols = [proto];
+  const cipher = grab('Cipher(?: Suite)?');
+  if (cipher) out.ciphers = [cipher];
+  const sig = grab('Signature Algorithm');
+  if (sig) out.sigAlg = sig;
+  const key = grab('Key Size|Public Key Size');
+  if (key) out.keySize = parseInt(key, 10) || null;
+  const sans = grab('SANs?|Subject Alternative Names?');
+  if (sans) out.sans = sans.split(',').map(s=>s.trim());
+
+  return out;
+}
+
+function auditSsl(d){
+  const flags = [];
+  const now = new Date();
+
+  if (d.notAfter && !isNaN(d.notAfter)){
+    if (d.notAfter < now){
+      flags.push({ sev:'crit', text:`Certificate expired on ${d.notAfter.toDateString()} — browsers will show a hard trust error to every visitor.` });
+    } else {
+      const daysLeft = Math.round((d.notAfter - now) / 86400000);
+      if (daysLeft <= 14) flags.push({ sev:'high', text:`Certificate expires in ${daysLeft} day(s) (${d.notAfter.toDateString()}) — renew immediately to avoid an outage.` });
+      else if (daysLeft <= 30) flags.push({ sev:'med', text:`Certificate expires in ${daysLeft} days (${d.notAfter.toDateString()}) — schedule renewal soon.` });
+    }
+  }
+
+  if (d.subject && d.issuer){
+    const subj = String(d.subject).toLowerCase();
+    const iss = String(d.issuer).toLowerCase();
+    if (subj === iss || (d.selfSigned === true)){
+      flags.push({ sev:'high', text:'Certificate appears self-signed (subject and issuer match) — not trusted by default by any browser or OS trust store.' });
+    }
+  }
+
+  if (d.sigAlg && /md5|sha1(?!\d)/i.test(d.sigAlg)){
+    flags.push({ sev:'crit', text:`Certificate uses a weak signature algorithm (${d.sigAlg}) — MD5/SHA-1 signatures are considered broken and are rejected or flagged by modern browsers.` });
+  }
+
+  if (d.keyAlg && /rsa/i.test(d.keyAlg) && d.keySize && d.keySize < 2048){
+    flags.push({ sev:'high', text:`RSA key size is only ${d.keySize} bits — below the 2048-bit minimum considered secure today.` });
+  }
+  if (d.keyAlg && /ec|ecdsa/i.test(d.keyAlg) && d.keySize && d.keySize < 224){
+    flags.push({ sev:'high', text:`EC key size is only ${d.keySize} bits — below commonly recommended curve sizes (P-224 and up).` });
+  }
+
+  const protoStr = (d.protocols || []).join(' ').toUpperCase();
+  if (/SSL\s*V?2|SSL\s*V?3/.test(protoStr)){
+    flags.push({ sev:'crit', text:'SSLv2/SSLv3 is supported — both are fully broken (POODLE and worse) and should be disabled entirely.' });
+  }
+  if (/TLS\s*V?1\.0/.test(protoStr)){
+    flags.push({ sev:'high', text:'TLS 1.0 is supported — deprecated by all major browsers/PCI-DSS due to known weaknesses (e.g. BEAST).' });
+  }
+  if (/TLS\s*V?1\.1/.test(protoStr)){
+    flags.push({ sev:'med', text:'TLS 1.1 is supported — deprecated; offers no meaningful security benefit over 1.2+.' });
+  }
+  if (d.protocols && d.protocols.length && !/TLS\s*V?1\.3/.test(protoStr)){
+    flags.push({ sev:'low', text:'TLS 1.3 was not observed in the supplied data — consider enabling it for improved performance and security over 1.2.' });
+  }
+
+  const cipherStr = (d.ciphers || []).join(' ').toUpperCase();
+  if (/RC4|DES|3DES|EXPORT|NULL|MD5/.test(cipherStr)){
+    flags.push({ sev:'crit', text:'A weak/legacy cipher suite (RC4, (3)DES, EXPORT, NULL, or MD5-based) was found in the supplied data — these are broken or trivially weakened.' });
+  }
+
+  if (d.grade){
+    const g = d.grade.toUpperCase();
+    if (/^[CDEF]/.test(g)) flags.push({ sev:'crit', text:`SSL Labs grade is ${d.grade} — indicates serious configuration weaknesses; see the full SSL Labs report for the specific cause.` });
+    else if (g.startsWith('B')) flags.push({ sev:'med', text:`SSL Labs grade is ${d.grade} — generally acceptable but short of best-practice configuration.` });
+  }
+
+  if (!d.notAfter && !d.protocols.length && !d.ciphers.length && !d.subject){
+    flags.push({ sev:'med', text:'Could not identify certificate, protocol, or cipher fields in the pasted text — double-check the paste matches SSL Labs JSON, openssl output, or the labeled-line format described above.' });
+  }
+
+  return flags;
+}
+
+function renderSslAudit(){
+  const raw = document.getElementById('sslPasteInput').value;
+  const sslResults = document.getElementById('sslResults');
+  if (!raw.trim()){
+    sslResults.innerHTML = `<div class="net-disclaimer" style="border-color:var(--crit);color:var(--crit);">Paste SSL Labs JSON, openssl output, or certificate-viewer fields first.</div>`;
+    return;
+  }
+  const d = parseSslInput(raw);
+  const flags = auditSsl(d);
+  let html = '';
+
+  html += `<div class="net-card" style="margin-bottom:18px;"><h4>🔒 Parsed certificate &amp; TLS info</h4>`;
+  const rows = [
+    ['Source format', d.source === 'ssllabs-json' ? 'SSL Labs JSON' : d.source === 'openssl' ? 'openssl output' : 'Labeled lines'],
+    ['SSL Labs grade', d.grade || '—'],
+    ['Subject', d.subject || '—'],
+    ['Issuer', d.issuer || '—'],
+    ['Valid from', d.notBefore && !isNaN(d.notBefore) ? d.notBefore.toDateString() : '—'],
+    ['Valid to', d.notAfter && !isNaN(d.notAfter) ? d.notAfter.toDateString() : '—'],
+    ['Signature algorithm', d.sigAlg || '—'],
+    ['Key', d.keyAlg && d.keySize ? `${d.keyAlg.toUpperCase()} ${d.keySize}-bit` : (d.keySize ? d.keySize + '-bit' : '—')],
+    ['SANs', d.sans && d.sans.length ? d.sans.join(', ') : '—'],
+    ['Protocols observed', d.protocols && d.protocols.length ? d.protocols.join(', ') : '—'],
+    ['Cipher(s) observed', d.ciphers && d.ciphers.length ? d.ciphers.join(', ') : '—'],
+  ];
+  rows.forEach(([k,v])=>{
+    html += `<div class="kv"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(String(v)).slice(0,200)}</span></div>`;
+  });
+  html += `</div>`;
+
+  html += `<div class="section-title">Certificate / TLS audit findings (${flags.length})</div>`;
+  if (!flags.length){
+    html += `<div class="empty-state" style="padding:24px 0;">No issues flagged in the parsed certificate/TLS data.</div>`;
+  } else {
+    flags.forEach(f=>{
+      html += `<div class="finding" style="border:1px solid var(--border-soft);border-radius:10px;margin-bottom:10px;">
+        <div class="finding-head">
+          <div class="finding-title">${escapeHtml(f.text.split(' — ')[0].slice(0,90))}</div>
+          <span class="sev-chip sev-${sevBadgeClass(f.sev)}">${SEV_LABEL[sevBadgeClass(f.sev)]}</span>
+        </div>
+        <div class="finding-desc">${escapeHtml(f.text)}</div>
+      </div>`;
+    });
+  }
+
+  sslResults.innerHTML = html;
+}
+document.getElementById('btnParseSsl').addEventListener('click', renderSslAudit);
+
+/* =======================================================================
+   Combined Network Analyzer PDF export — DNS + CSP/header audit
+   =======================================================================*/
+document.getElementById('btnExportNetPdf').addEventListener('click', ()=>{
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+
+  doc.setFillColor(10,14,19); doc.rect(0,0,pageW,842,'F');
+  doc.setTextColor(230,237,243); doc.setFont('helvetica','bold'); doc.setFontSize(24);
+  doc.text('AegisPulse SAST — Network Analyzer Report', 48, 100);
+  doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(139,152,165);
+  doc.text('DNS resolution and header/CSP audit findings', 48, 122);
+  doc.text('Generated: ' + new Date().toString(), 48, 140);
+
+  let y = 175;
+  function heading(text){
+    if (y > 780){ doc.addPage(); doc.setFillColor(255,255,255); doc.rect(0,0,pageW,842,'F'); y = 50; doc.setTextColor(20,20,20); }
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(y<175?230:20, y<175?237:20, y<175?243:20);
+    doc.text(text, 48, y); y += 20;
+  }
+  function line(text){
+    if (y > 800){ doc.addPage(); doc.setFillColor(255,255,255); doc.rect(0,0,pageW,842,'F'); y = 50; }
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(20,20,20);
+    const wrapped = doc.splitTextToSize(text, pageW-96);
+    doc.text(wrapped, 48, y);
+    y += wrapped.length * 13 + 6;
+  }
+
+  doc.addPage(); doc.setFillColor(255,255,255); doc.rect(0,0,pageW,842,'F'); y = 50;
+
+  heading('DNS Resolution / Header / CSP Audit');
+  const netResultsText = document.getElementById('netResults').innerText.trim();
+  if (netResultsText) line(netResultsText.slice(0,2600));
+  else line('No scan has been run yet in this session.');
+
+  heading('SSL Certificate / TLS Configuration Audit');
+  const sslResultsText = document.getElementById('sslResults').innerText.trim();
+  if (sslResultsText) line(sslResultsText.slice(0,1800));
+  else line('No certificate/TLS data was pasted/audited in this session.');
+
+  heading('Methodology Notes');
+  line('DNS records were resolved live via public DNS-over-HTTPS resolvers directly from the browser. The CSP/header audit reflects a live fetch of the target URL when the browser was able to read the response headers (the target opted in via CORS); otherwise it is reported as unreadable rather than guessed. Certificate/TLS findings reflect only data the user explicitly pasted (from SSL Labs, openssl, or a browser certificate viewer) — no browser API exposes TLS handshake or certificate details to JavaScript, so none of that can be fetched automatically. Live port scanning is not included, since a browser cannot open raw sockets — that would require a separate tool such as nmap run outside the browser.');
+
+  doc.save('aegispulse-network-report-' + Date.now() + '.pdf');
+});
+
+})();
+</script>
+</body>
+</html>
